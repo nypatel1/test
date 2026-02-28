@@ -122,7 +122,6 @@ export default function StudentChatPage() {
         });
 
         if (res.status === 503) {
-          setUsingMock(true);
           onError();
           return;
         }
@@ -169,7 +168,6 @@ export default function StudentChatPage() {
         }
         onDone();
       } catch {
-        setUsingMock(true);
         onError();
       }
     },
@@ -196,26 +194,6 @@ export default function StudentChatPage() {
     progress.questionsAsked += 1;
     progress.lastSession = new Date().toISOString();
     saveStudentProgress(progress);
-
-    if (usingMock) {
-      const mockKey =
-        content in MOCK_RESPONSES ? content : "default";
-      const mockContent = MOCK_RESPONSES[mockKey];
-      const aiMsg: ChatMessage = {
-        id: generateId(),
-        role: "assistant",
-        content: mockContent,
-        timestamp: getTimestamp(),
-        type: content === "Give me a hint" ? "hint" : content === "Practice problem" ? "practice" : "normal",
-      };
-
-      await new Promise((r) => setTimeout(r, 800 + Math.random() * 1200));
-      const final = [...updatedMessages, aiMsg];
-      setMessages(final);
-      saveChatHistory(final);
-      setIsStreaming(false);
-      return;
-    }
 
     const placeholderMsg: ChatMessage = {
       id: generateId(),
@@ -244,6 +222,7 @@ export default function StudentChatPage() {
         });
       },
       () => {
+        setUsingMock(false);
         setMessages((prev) => {
           const final = [...prev];
           saveChatHistory(final);
@@ -252,7 +231,7 @@ export default function StudentChatPage() {
         setIsStreaming(false);
       },
       () => {
-        // Fallback to mock on error
+        setUsingMock(true);
         const mockKey = content in MOCK_RESPONSES ? content : "default";
         const aiMsg: ChatMessage = {
           id: placeholderMsg.id,
