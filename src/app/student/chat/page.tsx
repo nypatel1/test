@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
 import {
   Brain,
@@ -15,69 +15,31 @@ import {
   RotateCcw,
   HelpCircle,
   FlaskConical,
+  Trash2,
+  WifiOff,
 } from "lucide-react";
+import { ChatMessage, TeacherConfig, DEFAULT_TEACHER_CONFIG } from "@/lib/types";
+import {
+  getTeacherConfig,
+  getChatHistory,
+  saveChatHistory,
+  clearChatHistory,
+  getStudentProgress,
+  saveStudentProgress,
+} from "@/lib/storage";
 
-interface Message {
-  id: number;
-  role: "ai" | "student";
-  content: string;
-  timestamp: string;
-  type?: "normal" | "hint" | "practice" | "misconception";
-}
-
-const initialMessages: Message[] = [
-  {
-    id: 1,
-    role: "ai",
-    content:
-      "Hi Alex! 👋 We're continuing with **Cell Division & Mitosis** today. Last time, you were working on understanding the difference between mitosis and meiosis. Let's pick up there!\n\nHere's a question to get us started: **Both mitosis and meiosis involve cell division, but they produce very different results. What's the key difference in what they produce?**",
-    timestamp: "2:30 PM",
-    type: "normal",
-  },
-  {
-    id: 2,
-    role: "student",
-    content:
-      "Mitosis makes 2 cells and meiosis makes 4? I think mitosis is for regular cells and meiosis is for like reproductive cells?",
-    timestamp: "2:31 PM",
-  },
-  {
-    id: 3,
-    role: "ai",
-    content:
-      "You're on the right track! ✅ You correctly identified that mitosis produces **2 cells** and meiosis produces **4 cells**. And yes, meiosis is for reproductive cells (gametes).\n\nNow let's go deeper: You said mitosis produces \"regular cells\" — can you be more specific? What's special about those 2 cells compared to the original?",
-    timestamp: "2:31 PM",
-    type: "normal",
-  },
-  {
-    id: 4,
-    role: "student",
-    content: "They're identical? Like they have the same DNA as the parent cell?",
-    timestamp: "2:32 PM",
-  },
-  {
-    id: 5,
-    role: "ai",
-    content:
-      "Exactly! 🎯 Mitosis produces 2 **genetically identical** daughter cells — they're clones of the parent cell with the same number of chromosomes (diploid).\n\nNow, how does meiosis differ? If mitosis produces identical copies, what makes the 4 cells from meiosis different?",
-    timestamp: "2:32 PM",
-    type: "normal",
-  },
-  {
-    id: 6,
-    role: "student",
-    content: "They only have half the chromosomes? And they're all different from each other?",
-    timestamp: "2:33 PM",
-  },
-  {
-    id: 7,
-    role: "ai",
-    content:
-      "Brilliant! 🌟 That's a key insight. Meiosis produces 4 **genetically unique** cells that are **haploid** (half the chromosomes). This is crucial for sexual reproduction — when two haploid gametes combine, they restore the full chromosome number.\n\nLet me check your understanding with a scenario:\n\n**If a human body cell has 46 chromosomes, how many chromosomes would be in:**\n1. A cell produced by mitosis?\n2. A cell produced by meiosis?",
-    timestamp: "2:33 PM",
-    type: "practice",
-  },
-];
+const MOCK_RESPONSES: Record<string, string> = {
+  default:
+    "That's a great question! Let me help you think through this. **Cell division** is fundamental to life — every organism depends on it for growth, repair, and reproduction.\n\nLet's start here: *Why* do you think cells need to divide in the first place? What would happen if they just kept growing larger instead?",
+  "Explain differently":
+    "Let me try a different angle! 🔄\n\nThink of **mitosis** like a photocopy machine — you put in one page and get an exact copy. Both copies are identical, with the same 46 chromosomes.\n\n**Meiosis** is like shuffling a deck of cards and dealing 4 hands — each hand is unique and has only half the cards (23 chromosomes).\n\nDoes that analogy help? What part would you like to explore more?",
+  "Give me a hint":
+    "💡 Here's a hint: Think about what happens at **fertilization**. If a sperm (from meiosis) meets an egg (from meiosis), and each has 23 chromosomes... what happens to the chromosome count in the resulting embryo?\n\nThis might help you understand *why* meiosis needs to halve the number!",
+  "Practice problem":
+    "📝 Let's practice!\n\n**A plant cell has 24 chromosomes. A student claims that after meiosis, each resulting cell would have 12 chromosomes, and after mitosis, they'd each have 24.**\n\nIs the student correct about both claims? Walk me through your reasoning for each one.",
+  "Why is this important?":
+    "Great question! 🌍 Understanding cell division is fundamental because:\n\n1. **Mitosis** is how your body **grows and repairs** — every time you heal a cut, mitosis is at work\n2. **Meiosis** creates **genetic diversity** — it's why siblings aren't identical\n3. **Errors** in cell division can lead to conditions like **Down syndrome** (extra chromosome) or **cancer** (uncontrolled mitosis)\n\nThis connects directly to our learning objective about predicting outcomes of division errors. Want to explore that?",
+};
 
 const objectives = [
   { text: "Describe stages of mitosis", completed: true },
@@ -95,10 +57,41 @@ const quickActions = [
   { label: "Why is this important?", icon: HelpCircle },
 ];
 
+function generateId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2);
+}
+
+function getTimestamp() {
+  return new Date().toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 export default function StudentChatPage() {
-  const [messages, setMessages] = useState<Message[]>(initialMessages);
+  const [config] = useState<TeacherConfig>(() => {
+    if (typeof window !== "undefined") return getTeacherConfig();
+    return DEFAULT_TEACHER_CONFIG;
+  });
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    if (typeof window === "undefined") return [];
+    const saved = getChatHistory();
+    if (saved.length > 0) return saved;
+    const cfg = getTeacherConfig();
+    const welcome: ChatMessage = {
+      id: generateId(),
+      role: "assistant",
+      content: `Hi there! I'm your AI tutor for **${cfg.unitName}** in ${cfg.courseName}. I'm here to help you learn — not to give you answers, but to guide you toward real understanding.\n\nLet's get started! What topic within ${cfg.unitName} would you like to explore, or should I pick a concept to work through together?`,
+      timestamp: getTimestamp(),
+      type: "normal",
+    };
+    saveChatHistory([welcome]);
+    return [welcome];
+  });
   const [input, setInput] = useState("");
-  const [isTyping, setIsTyping] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [usingMock, setUsingMock] = useState(false);
+  const [sessionQuestions, setSessionQuestions] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -106,85 +99,188 @@ export default function StudentChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const handleSend = () => {
-    if (!input.trim()) return;
+  const sendToAPI = useCallback(
+    async (
+      allMessages: ChatMessage[],
+      onChunk: (text: string) => void,
+      onDone: () => void,
+      onError: () => void
+    ) => {
+      try {
+        const apiMessages = allMessages.map((m) => ({
+          role: m.role,
+          content: m.content,
+        }));
 
-    const studentMsg: Message = {
-      id: messages.length + 1,
-      role: "student",
-      content: input,
-      timestamp: new Date().toLocaleTimeString([], {
-        hour: "numeric",
-        minute: "2-digit",
-      }),
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            messages: apiMessages,
+            teacherConfig: config,
+          }),
+        });
+
+        if (res.status === 503) {
+          setUsingMock(true);
+          onError();
+          return;
+        }
+
+        if (!res.ok) {
+          onError();
+          return;
+        }
+
+        const reader = res.body?.getReader();
+        const decoder = new TextDecoder();
+
+        if (!reader) {
+          onError();
+          return;
+        }
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const text = decoder.decode(value);
+          const lines = text.split("\n").filter((l) => l.startsWith("data: "));
+
+          for (const line of lines) {
+            const data = line.slice(6);
+            if (data === "[DONE]") {
+              onDone();
+              return;
+            }
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed.content) {
+                onChunk(parsed.content);
+              }
+              if (parsed.error) {
+                onError();
+                return;
+              }
+            } catch {
+              // skip malformed chunks
+            }
+          }
+        }
+        onDone();
+      } catch {
+        setUsingMock(true);
+        onError();
+      }
+    },
+    [config]
+  );
+
+  const sendMessage = async (content: string) => {
+    if (!content.trim() || isStreaming) return;
+
+    const userMsg: ChatMessage = {
+      id: generateId(),
+      role: "user",
+      content: content.trim(),
+      timestamp: getTimestamp(),
     };
 
-    setMessages((prev) => [...prev, studentMsg]);
+    const updatedMessages = [...messages, userMsg];
+    setMessages(updatedMessages);
     setInput("");
-    setIsTyping(true);
+    setSessionQuestions((q) => q + 1);
+    setIsStreaming(true);
 
-    setTimeout(() => {
-      const aiReply: Message = {
-        id: messages.length + 2,
-        role: "ai",
-        content:
-          "Great thinking! 🧬 Let me break that down for you. For **mitosis**, since it creates identical copies, the answer is **46 chromosomes** — the same as the parent cell. For **meiosis**, since it halves the chromosome count, each gamete would have **23 chromosomes**.\n\nYou're really getting the hang of this! Now, here's something to think about: **What would happen if meiosis didn't reduce the chromosome number?** What problem would that cause when fertilization occurs?",
-        timestamp: new Date().toLocaleTimeString([], {
-          hour: "numeric",
-          minute: "2-digit",
-        }),
-        type: "normal",
+    const progress = getStudentProgress();
+    progress.questionsAsked += 1;
+    progress.lastSession = new Date().toISOString();
+    saveStudentProgress(progress);
+
+    if (usingMock) {
+      const mockKey =
+        content in MOCK_RESPONSES ? content : "default";
+      const mockContent = MOCK_RESPONSES[mockKey];
+      const aiMsg: ChatMessage = {
+        id: generateId(),
+        role: "assistant",
+        content: mockContent,
+        timestamp: getTimestamp(),
+        type: content === "Give me a hint" ? "hint" : content === "Practice problem" ? "practice" : "normal",
       };
-      setMessages((prev) => [...prev, aiReply]);
-      setIsTyping(false);
-    }, 2000);
+
+      await new Promise((r) => setTimeout(r, 800 + Math.random() * 1200));
+      const final = [...updatedMessages, aiMsg];
+      setMessages(final);
+      saveChatHistory(final);
+      setIsStreaming(false);
+      return;
+    }
+
+    const placeholderMsg: ChatMessage = {
+      id: generateId(),
+      role: "assistant",
+      content: "",
+      timestamp: getTimestamp(),
+      type: content === "Give me a hint" ? "hint" : content === "Practice problem" ? "practice" : "normal",
+    };
+
+    const withPlaceholder = [...updatedMessages, placeholderMsg];
+    setMessages(withPlaceholder);
+
+    let accumulated = "";
+
+    await sendToAPI(
+      updatedMessages,
+      (chunk) => {
+        accumulated += chunk;
+        setMessages((prev) => {
+          const updated = [...prev];
+          const last = updated[updated.length - 1];
+          if (last.id === placeholderMsg.id) {
+            updated[updated.length - 1] = { ...last, content: accumulated };
+          }
+          return updated;
+        });
+      },
+      () => {
+        setMessages((prev) => {
+          const final = [...prev];
+          saveChatHistory(final);
+          return final;
+        });
+        setIsStreaming(false);
+      },
+      () => {
+        // Fallback to mock on error
+        const mockKey = content in MOCK_RESPONSES ? content : "default";
+        const aiMsg: ChatMessage = {
+          id: placeholderMsg.id,
+          role: "assistant",
+          content: MOCK_RESPONSES[mockKey],
+          timestamp: getTimestamp(),
+          type: placeholderMsg.type,
+        };
+        const final = [...updatedMessages, aiMsg];
+        setMessages(final);
+        saveChatHistory(final);
+        setIsStreaming(false);
+      }
+    );
   };
 
-  const handleQuickAction = (label: string) => {
-    setInput("");
-    const studentMsg: Message = {
-      id: messages.length + 1,
-      role: "student",
-      content: label,
-      timestamp: new Date().toLocaleTimeString([], {
-        hour: "numeric",
-        minute: "2-digit",
-      }),
+  const handleClear = () => {
+    clearChatHistory();
+    setSessionQuestions(0);
+    const welcomeMsg: ChatMessage = {
+      id: generateId(),
+      role: "assistant",
+      content: `Session cleared! Let's start fresh with **${config.unitName}**.\n\nWhat would you like to work on?`,
+      timestamp: getTimestamp(),
+      type: "normal",
     };
-    setMessages((prev) => [...prev, studentMsg]);
-    setIsTyping(true);
-
-    const responses: Record<string, string> = {
-      "Explain differently":
-        "Let me try a different approach! 🔄 Think of it like this:\n\n**Mitosis** is like a photocopy machine — you put in one page and get an exact copy. Both copies are identical.\n\n**Meiosis** is like shuffling a deck of cards and dealing 4 hands — each hand is unique and has only half the cards.\n\nDoes that analogy help? What part would you like to explore more?",
-      "Give me a hint":
-        "💡 Here's a hint: Think about what happens at **fertilization**. If a sperm (from meiosis) meets an egg (from meiosis), and each has 23 chromosomes... what happens to the chromosome count in the resulting embryo?\n\nThis might help you understand *why* meiosis needs to halve the number!",
-      "Practice problem":
-        "📝 Here's a practice problem:\n\n**A plant cell has 24 chromosomes. A student claims that after meiosis, the resulting cells would each have 12 chromosomes, and after mitosis, they'd have 24.**\n\n**Is the student correct about both claims?** Explain your reasoning for each.",
-      "Why is this important?":
-        "Great question! 🌍 Understanding cell division is fundamental because:\n\n1. **Mitosis** is how your body **grows and repairs** — every time you heal a cut, mitosis is happening\n2. **Meiosis** is how **genetic diversity** is created — it's why siblings aren't identical\n3. **Errors** in cell division can lead to conditions like **Down syndrome** (extra chromosome) or **cancer** (uncontrolled mitosis)\n\nThis connects to our next objective about division errors. Want to explore that?",
-    };
-
-    setTimeout(() => {
-      const aiReply: Message = {
-        id: messages.length + 2,
-        role: "ai",
-        content:
-          responses[label] || "Let me think about that and provide a helpful response...",
-        timestamp: new Date().toLocaleTimeString([], {
-          hour: "numeric",
-          minute: "2-digit",
-        }),
-        type:
-          label === "Give me a hint"
-            ? "hint"
-            : label === "Practice problem"
-            ? "practice"
-            : "normal",
-      };
-      setMessages((prev) => [...prev, aiReply]);
-      setIsTyping(false);
-    }, 1500);
+    setMessages([welcomeMsg]);
+    saveChatHistory([welcomeMsg]);
   };
 
   return (
@@ -205,29 +301,42 @@ export default function StudentChatPage() {
                 <Brain size={18} className="text-white" />
               </div>
               <div>
-                <h1 className="font-semibold text-sm">
-                  Cell Division & Mitosis
-                </h1>
+                <h1 className="font-semibold text-sm">{config.unitName}</h1>
                 <p className="text-xs text-muted">
-                  AP Biology &middot; Socratic Method
+                  {config.courseName} &middot;{" "}
+                  {config.approach.replace("-", " ")} method
                 </p>
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2 text-xs text-muted">
-            <Shield size={12} className="text-emerald-500" />
-            Teacher-configured &middot; Ms. Chen
+          <div className="flex items-center gap-3">
+            {usingMock && (
+              <span className="flex items-center gap-1.5 text-xs text-amber-600 bg-amber-50 px-2.5 py-1 rounded-full">
+                <WifiOff size={12} />
+                Demo mode
+              </span>
+            )}
+            <button
+              onClick={handleClear}
+              className="text-xs text-muted hover:text-red-500 transition-colors flex items-center gap-1"
+            >
+              <Trash2 size={12} />
+              Clear
+            </button>
+            <div className="flex items-center gap-1.5 text-xs text-muted">
+              <Shield size={12} className="text-emerald-500" />
+              Teacher-configured
+            </div>
           </div>
         </header>
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-6 py-6 space-y-5">
-          {/* Session Start Indicator */}
           <div className="flex items-center justify-center gap-3 py-2">
             <div className="h-px flex-1 bg-border" />
             <span className="text-xs text-muted px-3 py-1 rounded-full bg-gray-100 flex items-center gap-1.5">
               <Sparkles size={10} />
-              Learning session started &middot; Cell Division & Mitosis
+              Learning session &middot; {config.unitName}
             </span>
             <div className="h-px flex-1 bg-border" />
           </div>
@@ -236,17 +345,17 @@ export default function StudentChatPage() {
             <div
               key={msg.id}
               className={`flex gap-3 animate-fade-in ${
-                msg.role === "student" ? "justify-end" : ""
+                msg.role === "user" ? "justify-end" : ""
               }`}
             >
-              {msg.role === "ai" && (
+              {msg.role === "assistant" && (
                 <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white flex-shrink-0 mt-1">
                   <Brain size={16} />
                 </div>
               )}
               <div
                 className={`max-w-lg ${
-                  msg.role === "student"
+                  msg.role === "user"
                     ? "bg-primary text-white rounded-2xl rounded-tr-sm"
                     : msg.type === "hint"
                     ? "bg-amber-50 border border-amber-200 rounded-2xl rounded-tl-sm"
@@ -273,7 +382,7 @@ export default function StudentChatPage() {
                 )}
                 <div
                   className={`text-sm leading-relaxed whitespace-pre-wrap ${
-                    msg.role === "student" ? "text-white" : ""
+                    msg.role === "user" ? "text-white" : ""
                   }`}
                   dangerouslySetInnerHTML={{
                     __html: msg.content
@@ -282,15 +391,22 @@ export default function StudentChatPage() {
                       .replace(/\n/g, "<br/>"),
                   }}
                 />
+                {msg.content === "" && isStreaming && (
+                  <div className="flex gap-1.5">
+                    <div className="w-2 h-2 bg-gray-300 rounded-full typing-dot" />
+                    <div className="w-2 h-2 bg-gray-300 rounded-full typing-dot" />
+                    <div className="w-2 h-2 bg-gray-300 rounded-full typing-dot" />
+                  </div>
+                )}
                 <p
                   className={`text-[10px] mt-1.5 ${
-                    msg.role === "student" ? "text-white/60" : "text-muted"
+                    msg.role === "user" ? "text-white/60" : "text-muted"
                   }`}
                 >
                   {msg.timestamp}
                 </p>
               </div>
-              {msg.role === "student" && (
+              {msg.role === "user" && (
                 <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0 mt-1">
                   AR
                 </div>
@@ -298,21 +414,6 @@ export default function StudentChatPage() {
             </div>
           ))}
 
-          {/* Typing indicator */}
-          {isTyping && (
-            <div className="flex gap-3 animate-fade-in">
-              <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white flex-shrink-0 mt-1">
-                <Brain size={16} />
-              </div>
-              <div className="bg-white border border-border rounded-2xl rounded-tl-sm px-4 py-3 shadow-sm">
-                <div className="flex gap-1.5">
-                  <div className="w-2 h-2 bg-gray-300 rounded-full typing-dot" />
-                  <div className="w-2 h-2 bg-gray-300 rounded-full typing-dot" />
-                  <div className="w-2 h-2 bg-gray-300 rounded-full typing-dot" />
-                </div>
-              </div>
-            </div>
-          )}
           <div ref={messagesEndRef} />
         </div>
 
@@ -321,8 +422,9 @@ export default function StudentChatPage() {
           {quickActions.map((a) => (
             <button
               key={a.label}
-              onClick={() => handleQuickAction(a.label)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-border bg-white text-xs font-medium text-muted hover:text-primary hover:border-primary/30 transition-all"
+              onClick={() => sendMessage(a.label)}
+              disabled={isStreaming}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-border bg-white text-xs font-medium text-muted hover:text-primary hover:border-primary/30 transition-all disabled:opacity-50"
             >
               <a.icon size={12} />
               {a.label}
@@ -339,14 +441,15 @@ export default function StudentChatPage() {
               placeholder="Type your answer or ask a question..."
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSend()}
-              className="flex-1 outline-none text-sm bg-transparent"
+              onKeyDown={(e) => e.key === "Enter" && sendMessage(input)}
+              disabled={isStreaming}
+              className="flex-1 outline-none text-sm bg-transparent disabled:opacity-50"
             />
             <button
-              onClick={handleSend}
-              disabled={!input.trim()}
+              onClick={() => sendMessage(input)}
+              disabled={!input.trim() || isStreaming}
               className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all ${
-                input.trim()
+                input.trim() && !isStreaming
                   ? "bg-primary text-white hover:bg-primary-dark"
                   : "bg-gray-100 text-gray-300"
               }`}
@@ -355,13 +458,15 @@ export default function StudentChatPage() {
             </button>
           </div>
           <p className="text-center text-[10px] text-muted mt-2">
-            AI tutor configured by Ms. Chen &middot; Focused on mastery, not
-            answers &middot; Your progress is tracked
+            {usingMock
+              ? "Running in demo mode — connect an OpenAI API key for live AI responses"
+              : "AI tutor powered by OpenAI"}{" "}
+            &middot; Configured by teacher &middot; Focused on mastery
           </p>
         </div>
       </div>
 
-      {/* Right Sidebar - Progress */}
+      {/* Right Sidebar */}
       <aside className="w-72 bg-white border-l border-border p-5 flex-shrink-0 overflow-y-auto hidden lg:block">
         <h3 className="font-semibold text-sm flex items-center gap-2 mb-4">
           <Target size={15} className="text-primary" />
@@ -398,34 +503,27 @@ export default function StudentChatPage() {
         <div className="border-t border-border pt-5">
           <h3 className="font-semibold text-sm flex items-center gap-2 mb-3">
             <TrendingUpIcon />
-            Session Progress
+            Session Stats
           </h3>
           <div className="space-y-3">
             <div>
               <div className="flex justify-between text-xs mb-1">
-                <span className="text-muted">Unit Mastery</span>
-                <span className="font-semibold">72%</span>
-              </div>
-              <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-                <div className="h-full bg-emerald-500 rounded-full w-[72%]" />
+                <span className="text-muted">Questions This Session</span>
+                <span className="font-semibold">{sessionQuestions}</span>
               </div>
             </div>
             <div>
               <div className="flex justify-between text-xs mb-1">
-                <span className="text-muted">Session Questions</span>
-                <span className="font-semibold">7</span>
+                <span className="text-muted">Messages</span>
+                <span className="font-semibold">{messages.length}</span>
               </div>
             </div>
             <div>
               <div className="flex justify-between text-xs mb-1">
-                <span className="text-muted">Correct Responses</span>
-                <span className="font-semibold text-emerald-600">5/7</span>
-              </div>
-            </div>
-            <div>
-              <div className="flex justify-between text-xs mb-1">
-                <span className="text-muted">Time in Session</span>
-                <span className="font-semibold">18 min</span>
+                <span className="text-muted">Mode</span>
+                <span className="font-semibold text-xs">
+                  {usingMock ? "Demo" : "Live AI"}
+                </span>
               </div>
             </div>
           </div>
@@ -434,22 +532,32 @@ export default function StudentChatPage() {
         <div className="border-t border-border pt-5 mt-5">
           <h3 className="font-semibold text-sm flex items-center gap-2 mb-3">
             <Sparkles size={15} className="text-amber-500" />
-            Your Learning Style
+            AI Configuration
           </h3>
           <div className="space-y-2 text-xs text-muted">
             <div className="flex items-center justify-between p-2 bg-indigo-50 rounded-lg">
-              <span>Preferred approach</span>
-              <span className="font-medium text-indigo-700">
-                Visual + Analogies
+              <span>Approach</span>
+              <span className="font-medium text-indigo-700 capitalize">
+                {config.approach.replace("-", " ")}
               </span>
             </div>
             <div className="flex items-center justify-between p-2 bg-indigo-50 rounded-lg">
-              <span>Best time</span>
-              <span className="font-medium text-indigo-700">Afternoon</span>
+              <span>Tone</span>
+              <span className="font-medium text-indigo-700 capitalize">
+                {config.tone}
+              </span>
             </div>
             <div className="flex items-center justify-between p-2 bg-indigo-50 rounded-lg">
-              <span>Avg. session</span>
-              <span className="font-medium text-indigo-700">22 minutes</span>
+              <span>Scaffolding</span>
+              <span className="font-medium text-indigo-700">
+                Level {config.scaffolding}/5
+              </span>
+            </div>
+            <div className="flex items-center justify-between p-2 bg-indigo-50 rounded-lg">
+              <span>Boundaries</span>
+              <span className="font-medium text-indigo-700">
+                {config.boundaries.filter((b) => b.enabled).length} active
+              </span>
             </div>
           </div>
         </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useIsMounted } from "@/lib/useIsMounted";
 import TeacherLayout from "../../../components/TeacherLayout";
 import Link from "next/link";
 import {
@@ -16,46 +17,11 @@ import {
   Eye,
   Users,
   MessageSquare,
+  Check,
+  Plus,
 } from "lucide-react";
-
-const objectives = [
-  {
-    id: 1,
-    text: "Describe the stages of mitosis and their key events",
-    depth: "Explain",
-    mastery: 78,
-  },
-  {
-    id: 2,
-    text: "Compare and contrast mitosis and meiosis",
-    depth: "Analyze",
-    mastery: 54,
-  },
-  {
-    id: 3,
-    text: "Explain the role of checkpoints in cell cycle regulation",
-    depth: "Explain",
-    mastery: 71,
-  },
-  {
-    id: 4,
-    text: "Predict outcomes of errors in cell division",
-    depth: "Apply",
-    mastery: 45,
-  },
-  {
-    id: 5,
-    text: "Connect cell division to growth, repair, and reproduction",
-    depth: "Synthesize",
-    mastery: 82,
-  },
-  {
-    id: 6,
-    text: "Interpret microscope images of dividing cells",
-    depth: "Apply",
-    mastery: 69,
-  },
-];
+import { TeacherConfig, DEFAULT_TEACHER_CONFIG } from "@/lib/types";
+import { getTeacherConfig, saveTeacherConfig } from "@/lib/storage";
 
 const studentProgress = [
   { name: "Alex Rivera", mastery: 92, sessions: 8, status: "mastered" },
@@ -67,55 +33,79 @@ const studentProgress = [
 ];
 
 export default function UnitDetailClient() {
-  const [approach, setApproach] = useState("socratic");
-  const [scaffolding, setScaffolding] = useState(3);
+  const [config, setConfig] = useState<TeacherConfig>(() => {
+    if (typeof window !== "undefined") {
+      return getTeacherConfig();
+    }
+    return DEFAULT_TEACHER_CONFIG;
+  });
   const [tab, setTab] = useState<"config" | "students" | "preview">("config");
+  const [saved, setSaved] = useState(false);
+  const mounted = useIsMounted();
+  const [newObjective, setNewObjective] = useState("");
+
+  const handleSave = () => {
+    saveTeacherConfig(config);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  const updateConfig = (partial: Partial<TeacherConfig>) => {
+    setConfig((prev) => ({ ...prev, ...partial }));
+  };
+
+  const toggleBoundary = (index: number) => {
+    const updated = [...config.boundaries];
+    updated[index] = { ...updated[index], enabled: !updated[index].enabled };
+    updateConfig({ boundaries: updated });
+  };
+
+  const addObjective = () => {
+    if (!newObjective.trim()) return;
+    const newObj = {
+      id: Date.now(),
+      text: newObjective.trim(),
+      depth: "Explain",
+      mastery: 0,
+    };
+    updateConfig({ objectives: [...config.objectives, newObj] });
+    setNewObjective("");
+  };
+
+  const removeObjective = (id: number) => {
+    updateConfig({
+      objectives: config.objectives.filter((o) => o.id !== id),
+    });
+  };
+
+  const removeSource = (source: string) => {
+    updateConfig({
+      allowedSources: config.allowedSources.filter((s) => s !== source),
+    });
+  };
+
+  if (!mounted) return null;
 
   const approaches = [
     {
-      id: "socratic",
+      id: "socratic" as const,
       name: "Socratic Method",
-      desc: "AI asks guiding questions to help students discover answers themselves",
+      desc: "AI asks guiding questions to help students discover answers",
     },
     {
-      id: "step-by-step",
+      id: "step-by-step" as const,
       name: "Step-by-Step",
-      desc: "AI breaks concepts into small, sequential steps with checkpoints",
+      desc: "AI breaks concepts into small, sequential steps",
     },
     {
-      id: "conceptual",
+      id: "conceptual" as const,
       name: "Conceptual-First",
-      desc: "AI builds the big picture first, then dives into details",
+      desc: "AI builds the big picture first, then details",
     },
     {
-      id: "example-driven",
+      id: "example-driven" as const,
       name: "Example-Driven",
-      desc: "AI uses real-world examples and analogies to teach concepts",
-    },
-  ];
-
-  const boundaries = [
-    {
-      label: "Never provide direct answers to assessment questions",
-      enabled: true,
-    },
-    {
-      label: "Don't write essays or complete assignments for students",
-      enabled: true,
-    },
-    { label: "Restrict to unit-specific topics only", enabled: true },
-    {
-      label: "Always ask a follow-up question after explaining a concept",
-      enabled: true,
-    },
-    { label: "Allow students to request practice problems", enabled: true },
-    {
-      label: "Allow access to supplementary materials beyond textbook",
-      enabled: false,
-    },
-    {
-      label: "Flag student if they ask for direct answers 3+ times",
-      enabled: true,
+      desc: "AI uses real-world examples and analogies",
     },
   ];
 
@@ -133,41 +123,43 @@ export default function UnitDetailClient() {
         <div className="flex items-start justify-between mb-6">
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold">Cell Division & Mitosis</h1>
+              <h1 className="text-2xl font-bold">{config.unitName}</h1>
               <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-xs font-medium">
                 Active
               </span>
             </div>
             <p className="text-muted mt-1">
-              AP Biology — Period 3 &middot; 34 students &middot; 5 days
-              remaining
+              {config.courseName} &middot; 34 students &middot; 5 days remaining
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <button className="px-4 py-2 border border-border rounded-lg text-sm font-medium hover:bg-surface-hover transition-colors flex items-center gap-1.5">
+            <Link
+              href="/student/chat"
+              className="px-4 py-2 border border-border rounded-lg text-sm font-medium hover:bg-surface-hover transition-colors flex items-center gap-1.5"
+            >
               <Eye size={15} />
               Preview as Student
-            </button>
-            <button className="px-5 py-2 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary-dark transition-colors shadow-lg shadow-indigo-500/20 flex items-center gap-1.5">
-              <Save size={15} />
-              Save Changes
+            </Link>
+            <button
+              onClick={handleSave}
+              className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-1.5 ${
+                saved
+                  ? "bg-emerald-500 text-white"
+                  : "bg-primary text-white hover:bg-primary-dark shadow-lg shadow-indigo-500/20"
+              }`}
+            >
+              {saved ? <Check size={15} /> : <Save size={15} />}
+              {saved ? "Saved!" : "Save Changes"}
             </button>
           </div>
         </div>
 
+        {/* Tabs */}
         <div className="flex gap-1 mb-6 bg-gray-100 rounded-lg p-1 w-fit">
           {[
             { id: "config" as const, label: "AI Configuration", icon: Sliders },
-            {
-              id: "students" as const,
-              label: "Student Progress",
-              icon: Users,
-            },
-            {
-              id: "preview" as const,
-              label: "Chat Preview",
-              icon: MessageSquare,
-            },
+            { id: "students" as const, label: "Student Progress", icon: Users },
+            { id: "preview" as const, label: "Chat Preview", icon: MessageSquare },
           ].map((t) => (
             <button
               key={t.id}
@@ -186,20 +178,21 @@ export default function UnitDetailClient() {
 
         {tab === "config" && (
           <div className="grid lg:grid-cols-2 gap-6">
+            {/* Learning Objectives */}
             <div className="bg-white rounded-xl border border-border p-6">
               <div className="flex items-center gap-2 mb-4">
                 <Target size={18} className="text-primary" />
                 <h2 className="font-semibold text-lg">Learning Objectives</h2>
               </div>
               <p className="text-sm text-muted mb-4">
-                Define what mastery looks like. The AI will guide students toward
-                these objectives.
+                Define what mastery looks like. These are injected into the AI&apos;s
+                system prompt.
               </p>
               <div className="space-y-3">
-                {objectives.map((obj) => (
+                {config.objectives.map((obj) => (
                   <div
                     key={obj.id}
-                    className="flex items-start gap-3 p-3 rounded-lg border border-border hover:border-primary/20 transition-colors"
+                    className="flex items-start gap-3 p-3 rounded-lg border border-border hover:border-primary/20 transition-colors group"
                   >
                     <CheckCircle2
                       size={16}
@@ -211,48 +204,69 @@ export default function UnitDetailClient() {
                         <span className="px-2 py-0.5 rounded bg-indigo-100 text-indigo-700 text-xs font-medium">
                           {obj.depth}
                         </span>
-                        <div className="flex items-center gap-1.5">
-                          <div className="w-12 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                            <div
-                              className={`h-full rounded-full ${
-                                obj.mastery >= 75
-                                  ? "bg-emerald-500"
-                                  : obj.mastery >= 60
-                                  ? "bg-amber-500"
-                                  : "bg-red-500"
-                              }`}
-                              style={{ width: `${obj.mastery}%` }}
-                            />
+                        {obj.mastery > 0 && (
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-12 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full ${
+                                  obj.mastery >= 75
+                                    ? "bg-emerald-500"
+                                    : obj.mastery >= 60
+                                    ? "bg-amber-500"
+                                    : "bg-red-500"
+                                }`}
+                                style={{ width: `${obj.mastery}%` }}
+                              />
+                            </div>
+                            <span className="text-xs text-muted">
+                              {obj.mastery}%
+                            </span>
                           </div>
-                          <span className="text-xs text-muted">
-                            {obj.mastery}%
-                          </span>
-                        </div>
+                        )}
                       </div>
                     </div>
+                    <button
+                      onClick={() => removeObjective(obj.id)}
+                      className="text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+                    >
+                      <XCircle size={14} />
+                    </button>
                   </div>
                 ))}
               </div>
-              <button className="mt-4 text-sm text-primary font-medium hover:underline flex items-center gap-1">
-                + Add objective
-              </button>
+              <div className="mt-4 flex gap-2">
+                <input
+                  type="text"
+                  value={newObjective}
+                  onChange={(e) => setNewObjective(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && addObjective()}
+                  placeholder="Add a new objective..."
+                  className="flex-1 text-sm border border-border rounded-lg px-3 py-2 outline-none focus:border-primary/40"
+                />
+                <button
+                  onClick={addObjective}
+                  disabled={!newObjective.trim()}
+                  className="px-3 py-2 bg-primary text-white rounded-lg text-sm disabled:opacity-50 flex items-center gap-1"
+                >
+                  <Plus size={14} />
+                  Add
+                </button>
+              </div>
             </div>
 
+            {/* Teaching Approach & Scaffolding */}
             <div className="space-y-6">
               <div className="bg-white rounded-xl border border-border p-6">
                 <div className="flex items-center gap-2 mb-4">
                   <Brain size={18} className="text-accent" />
                   <h2 className="font-semibold text-lg">Teaching Approach</h2>
                 </div>
-                <p className="text-sm text-muted mb-4">
-                  Choose how the AI should interact with students in this unit.
-                </p>
                 <div className="space-y-2">
                   {approaches.map((a) => (
                     <label
                       key={a.id}
                       className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
-                        approach === a.id
+                        config.approach === a.id
                           ? "border-primary bg-indigo-50/50"
                           : "border-border hover:border-gray-300"
                       }`}
@@ -260,9 +274,8 @@ export default function UnitDetailClient() {
                       <input
                         type="radio"
                         name="approach"
-                        value={a.id}
-                        checked={approach === a.id}
-                        onChange={() => setApproach(a.id)}
+                        checked={config.approach === a.id}
+                        onChange={() => updateConfig({ approach: a.id })}
                         className="mt-1 accent-[#4f46e5]"
                       />
                       <div>
@@ -279,37 +292,34 @@ export default function UnitDetailClient() {
                   <Sliders size={18} className="text-emerald-500" />
                   <h2 className="font-semibold text-lg">Scaffolding Level</h2>
                 </div>
-                <p className="text-sm text-muted mb-4">
-                  How much support should the AI provide before students must
-                  think independently?
-                </p>
-                <div className="space-y-3">
-                  <input
-                    type="range"
-                    min={1}
-                    max={5}
-                    value={scaffolding}
-                    onChange={(e) => setScaffolding(Number(e.target.value))}
-                    className="w-full accent-[#4f46e5]"
-                  />
-                  <div className="flex justify-between text-xs text-muted">
-                    <span>Minimal hints</span>
-                    <span>Balanced</span>
-                    <span>Heavy support</span>
-                  </div>
-                  <div className="p-3 bg-indigo-50 rounded-lg">
-                    <p className="text-sm text-indigo-800">
-                      {scaffolding <= 2
-                        ? "The AI will give minimal hints and expect students to work through problems with little guidance. Best for advanced learners."
-                        : scaffolding <= 3
-                        ? "The AI will provide moderate scaffolding — guiding questions and partial explanations while still requiring student reasoning."
-                        : "The AI will provide detailed step-by-step support, breaking concepts into very small pieces. Best for students who need extra help."}
-                    </p>
-                  </div>
+                <input
+                  type="range"
+                  min={1}
+                  max={5}
+                  value={config.scaffolding}
+                  onChange={(e) =>
+                    updateConfig({ scaffolding: Number(e.target.value) })
+                  }
+                  className="w-full accent-[#4f46e5]"
+                />
+                <div className="flex justify-between text-xs text-muted mt-1">
+                  <span>Minimal hints</span>
+                  <span>Balanced</span>
+                  <span>Heavy support</span>
+                </div>
+                <div className="p-3 bg-indigo-50 rounded-lg mt-3">
+                  <p className="text-sm text-indigo-800">
+                    {config.scaffolding <= 2
+                      ? "Minimal hints — students work through problems with little guidance."
+                      : config.scaffolding <= 3
+                      ? "Moderate scaffolding — guiding questions with partial explanations."
+                      : "Heavy scaffolding — detailed step-by-step support for all students."}
+                  </p>
                 </div>
               </div>
             </div>
 
+            {/* Boundaries */}
             <div className="lg:col-span-2 bg-white rounded-xl border border-border p-6">
               <div className="flex items-center gap-2 mb-4">
                 <Shield size={18} className="text-red-500" />
@@ -318,21 +328,22 @@ export default function UnitDetailClient() {
                 </h2>
               </div>
               <p className="text-sm text-muted mb-4">
-                Set guardrails for how the AI can and cannot interact with
-                students. These ensure alignment and prevent misuse.
+                These guardrails are directly injected into the AI system prompt.
+                Toggle them to control student interactions.
               </p>
               <div className="grid md:grid-cols-2 gap-3">
-                {boundaries.map((b, i) => (
-                  <label
+                {config.boundaries.map((b, i) => (
+                  <div
                     key={i}
-                    className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
+                    className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${
                       b.enabled
                         ? "border-emerald-200 bg-emerald-50/50"
                         : "border-border"
                     }`}
                   >
-                    <div
-                      className={`w-9 h-5 rounded-full relative transition-colors ${
+                    <button
+                      onClick={() => toggleBoundary(i)}
+                      className={`w-9 h-5 rounded-full relative transition-colors flex-shrink-0 ${
                         b.enabled ? "bg-emerald-500" : "bg-gray-200"
                       }`}
                     >
@@ -341,42 +352,35 @@ export default function UnitDetailClient() {
                           b.enabled ? "translate-x-4" : "translate-x-0.5"
                         }`}
                       />
-                    </div>
+                    </button>
                     <span className="text-sm">{b.label}</span>
-                  </label>
+                  </div>
                 ))}
               </div>
             </div>
 
+            {/* Allowed Sources */}
             <div className="lg:col-span-2 bg-white rounded-xl border border-border p-6">
               <div className="flex items-center gap-2 mb-4">
                 <BookOpen size={18} className="text-primary" />
                 <h2 className="font-semibold text-lg">Allowed Sources</h2>
               </div>
-              <p className="text-sm text-muted mb-4">
-                Restrict the AI to only reference these materials when teaching.
-              </p>
               <div className="flex flex-wrap gap-2">
-                {[
-                  "Campbell Biology (Ch. 12)",
-                  "Class Lecture Notes — Week 6-7",
-                  "Lab Manual: Mitosis Observation",
-                  "AP Bio College Board Unit 5",
-                ].map((src) => (
+                {config.allowedSources.map((src) => (
                   <div
                     key={src}
                     className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-lg text-sm"
                   >
                     <BookOpen size={13} className="text-muted" />
                     {src}
-                    <button className="text-gray-400 hover:text-red-500 transition-colors">
+                    <button
+                      onClick={() => removeSource(src)}
+                      className="text-gray-400 hover:text-red-500 transition-colors"
+                    >
                       <XCircle size={13} />
                     </button>
                   </div>
                 ))}
-                <button className="px-3 py-1.5 border border-dashed border-primary/30 rounded-lg text-sm text-primary hover:bg-indigo-50 transition-colors">
-                  + Add source
-                </button>
               </div>
             </div>
           </div>
@@ -386,11 +390,8 @@ export default function UnitDetailClient() {
           <div className="bg-white rounded-xl border border-border">
             <div className="p-5 border-b border-border">
               <h2 className="font-semibold text-lg">
-                Student Progress — Cell Division & Mitosis
+                Student Progress — {config.unitName}
               </h2>
-              <p className="text-sm text-muted mt-1">
-                Track individual student mastery and engagement in this unit.
-              </p>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full">
@@ -458,7 +459,7 @@ export default function UnitDetailClient() {
                         </div>
                       </td>
                       <td className="px-5 py-3.5 text-sm text-muted">
-                        {s.sessions} sessions
+                        {s.sessions}
                       </td>
                       <td className="px-5 py-3.5">
                         <span
@@ -470,13 +471,12 @@ export default function UnitDetailClient() {
                               : "bg-indigo-100 text-indigo-700"
                           }`}
                         >
-                          {s.status.charAt(0).toUpperCase() +
-                            s.status.slice(1)}
+                          {s.status.charAt(0).toUpperCase() + s.status.slice(1)}
                         </span>
                       </td>
                       <td className="px-5 py-3.5">
                         <div className="flex gap-1">
-                          {objectives.slice(0, 6).map((_, j) => (
+                          {config.objectives.slice(0, 6).map((_, j) => (
                             <div
                               key={j}
                               className={`w-5 h-5 rounded text-[10px] font-bold flex items-center justify-center ${
@@ -504,11 +504,12 @@ export default function UnitDetailClient() {
           <div className="bg-white rounded-xl border border-border overflow-hidden">
             <div className="p-5 border-b border-border bg-gradient-to-r from-indigo-50/50 to-transparent">
               <h2 className="font-semibold text-lg">
-                Chat Preview — How Students Will Experience This Unit
+                Chat Preview — How Students Experience This Unit
               </h2>
               <p className="text-sm text-muted mt-1">
-                This shows a simulated conversation based on your current
-                configuration.
+                Based on your current config: <strong>{config.approach.replace("-", " ")}</strong> method,
+                scaffolding level {config.scaffolding}/5,{" "}
+                {config.boundaries.filter((b) => b.enabled).length} active boundaries.
               </p>
             </div>
             <div className="p-6 space-y-4 max-w-3xl mx-auto">
@@ -518,9 +519,9 @@ export default function UnitDetailClient() {
                 </div>
                 <div className="bg-indigo-50 rounded-2xl rounded-tl-sm px-4 py-3 max-w-md">
                   <p className="text-sm">
-                    Welcome! We&apos;re exploring cell division today. Let&apos;s
+                    Welcome! We&apos;re exploring {config.unitName} today. Let&apos;s
                     start with a question: What do you think happens to a
-                    cell&apos;s DNA before it divides? Take a guess!
+                    cell&apos;s DNA before it divides?
                   </p>
                 </div>
               </div>
@@ -540,38 +541,10 @@ export default function UnitDetailClient() {
                 </div>
                 <div className="bg-indigo-50 rounded-2xl rounded-tl-sm px-4 py-3 max-w-md">
                   <p className="text-sm">
-                    Great thinking! You&apos;re on the right track. The DNA does
-                    get copied — this process is called{" "}
-                    <strong>replication</strong>. Now, here&apos;s a deeper
-                    question: <em>Why</em> is it important that the DNA is
-                    copied <em>exactly</em>? What might happen if there were
-                    errors?
-                  </p>
-                </div>
-              </div>
-              <div className="flex gap-3 justify-end">
-                <div className="bg-gray-100 rounded-2xl rounded-tr-sm px-4 py-3 max-w-md">
-                  <p className="text-sm">
-                    Maybe the new cell wouldn&apos;t work right? Like mutations
-                    or something?
-                  </p>
-                </div>
-                <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                  AR
-                </div>
-              </div>
-              <div className="flex gap-3">
-                <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white flex-shrink-0">
-                  <Brain size={16} />
-                </div>
-                <div className="bg-indigo-50 rounded-2xl rounded-tl-sm px-4 py-3 max-w-md">
-                  <p className="text-sm">
-                    Exactly! Errors in DNA copying can lead to{" "}
-                    <strong>mutations</strong>, which might cause the cell to
-                    malfunction. This connects to one of our key objectives:
-                    understanding <em>cell cycle checkpoints</em>. Can you think
-                    of why a cell might have &quot;checkpoints&quot; before it
-                    proceeds to divide?
+                    Great thinking! The DNA does get copied — this is called{" "}
+                    <strong>replication</strong>. Now, <em>why</em> is it
+                    important that the DNA is copied <em>exactly</em>? What might
+                    happen if there were errors?
                   </p>
                 </div>
               </div>
@@ -580,10 +553,20 @@ export default function UnitDetailClient() {
                 <div className="h-px flex-1 bg-border" />
                 <span className="text-xs text-muted px-3 flex items-center gap-1.5">
                   <Shield size={12} className="text-emerald-500" />
-                  AI stayed within unit scope • Socratic method active • No
-                  answers given directly
+                  {config.approach.replace("-", " ")} method active &bull;{" "}
+                  {config.boundaries.filter((b) => b.enabled).length} guardrails enforced
                 </span>
                 <div className="h-px flex-1 bg-border" />
+              </div>
+
+              <div className="text-center">
+                <Link
+                  href="/student/chat"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary-dark transition-colors"
+                >
+                  <Brain size={16} />
+                  Open Live Student Chat
+                </Link>
               </div>
             </div>
           </div>
