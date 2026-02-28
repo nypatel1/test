@@ -1,5 +1,7 @@
 "use client";
 
+import dynamic from "next/dynamic";
+import { useState } from "react";
 import TeacherLayout from "../../components/TeacherLayout";
 import {
   Brain,
@@ -9,79 +11,58 @@ import {
   ArrowDownRight,
   BarChart3,
   Zap,
+  Filter,
 } from "lucide-react";
+
+const ChartsSection = dynamic(() => import("./ChartsSection"), { ssr: false });
 
 const misconceptions = [
   {
     topic: "Cell Division",
     issue: "Confusing mitosis (2 identical cells) with meiosis (4 unique cells)",
     students: 12,
-    severity: "high",
-    trend: "stable",
+    severity: "high" as const,
+    trend: "stable" as const,
   },
   {
     topic: "DNA Replication",
     issue: "Believing replication only occurs in one direction along the strand",
     students: 9,
-    severity: "medium",
-    trend: "improving",
+    severity: "medium" as const,
+    trend: "improving" as const,
   },
   {
     topic: "Protein Synthesis",
     issue: "Mixing up where transcription (nucleus) and translation (ribosome) occur",
     students: 7,
-    severity: "medium",
-    trend: "worsening",
+    severity: "medium" as const,
+    trend: "worsening" as const,
   },
   {
     topic: "Cell Cycle",
     issue: "Thinking G1 and G2 phases are identical rest periods",
     students: 5,
-    severity: "low",
-    trend: "improving",
+    severity: "low" as const,
+    trend: "improving" as const,
   },
   {
     topic: "Genetics",
     issue: "Confusing genotype (genetic makeup) with phenotype (observable traits)",
     students: 15,
-    severity: "high",
-    trend: "worsening",
+    severity: "high" as const,
+    trend: "worsening" as const,
   },
 ];
 
 const masteryHeatmapData = [
-  {
-    student: "Alex R.",
-    objectives: [95, 88, 72, 90, 85, 78],
-  },
-  {
-    student: "Jordan K.",
-    objectives: [78, 65, 82, 55, 71, 60],
-  },
-  {
-    student: "Taylor N.",
-    objectives: [45, 38, 52, 30, 48, 42],
-  },
-  {
-    student: "Morgan P.",
-    objectives: [92, 88, 95, 85, 90, 88],
-  },
-  {
-    student: "Casey W.",
-    objectives: [62, 70, 58, 65, 55, 72],
-  },
-  {
-    student: "Sam O.",
-    objectives: [38, 42, 35, 28, 45, 32],
-  },
-  {
-    student: "Jamie L.",
-    objectives: [85, 78, 90, 82, 75, 88],
-  },
-  {
-    student: "Quinn D.",
-    objectives: [72, 68, 75, 58, 82, 65],
-  },
+  { student: "Alex R.", objectives: [95, 88, 72, 90, 85, 78] },
+  { student: "Jordan K.", objectives: [78, 65, 82, 55, 71, 60] },
+  { student: "Taylor N.", objectives: [45, 38, 52, 30, 48, 42] },
+  { student: "Morgan P.", objectives: [92, 88, 95, 85, 90, 88] },
+  { student: "Casey W.", objectives: [62, 70, 58, 65, 55, 72] },
+  { student: "Sam O.", objectives: [38, 42, 35, 28, 45, 32] },
+  { student: "Jamie L.", objectives: [85, 78, 90, 82, 75, 88] },
+  { student: "Quinn D.", objectives: [72, 68, 75, 58, 82, 65] },
 ];
 
 const objectiveLabels = [
@@ -93,24 +74,6 @@ const objectiveLabels = [
   "Microscope Images",
 ];
 
-const engagementData = [
-  { label: "Mon", sessions: 45, avgDuration: 18 },
-  { label: "Tue", sessions: 52, avgDuration: 22 },
-  { label: "Wed", sessions: 38, avgDuration: 15 },
-  { label: "Thu", sessions: 61, avgDuration: 25 },
-  { label: "Fri", sessions: 33, avgDuration: 12 },
-  { label: "Sat", sessions: 8, avgDuration: 28 },
-  { label: "Sun", sessions: 5, avgDuration: 30 },
-];
-
-const skillProgression = [
-  { week: "Week 1", mastery: 32 },
-  { week: "Week 2", mastery: 45 },
-  { week: "Week 3", mastery: 58 },
-  { week: "Week 4", mastery: 67 },
-  { week: "Week 5", mastery: 73 },
-];
-
 function getHeatColor(value: number) {
   if (value >= 85) return "bg-emerald-500 text-white";
   if (value >= 70) return "bg-emerald-300 text-emerald-900";
@@ -120,7 +83,12 @@ function getHeatColor(value: number) {
 }
 
 export default function InsightsPage() {
-  const maxSessions = Math.max(...engagementData.map((d) => d.sessions));
+  const [severityFilter, setSeverityFilter] = useState<string>("all");
+
+  const filteredMisconceptions =
+    severityFilter === "all"
+      ? misconceptions
+      : misconceptions.filter((m) => m.severity === severityFilter);
 
   return (
     <TeacherLayout>
@@ -157,9 +125,11 @@ export default function InsightsPage() {
               </p>
               <Brain size={16} className="text-amber-500" />
             </div>
-            <p className="text-3xl font-bold mt-1">5</p>
+            <p className="text-3xl font-bold mt-1">{misconceptions.length}</p>
             <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
-              <ArrowUpRight size={12} />2 need attention
+              <ArrowUpRight size={12} />
+              {misconceptions.filter((m) => m.severity === "high").length} need
+              attention
             </p>
           </div>
           <div className="bg-white rounded-xl border border-border p-5">
@@ -171,15 +141,12 @@ export default function InsightsPage() {
             </div>
             <p className="text-3xl font-bold mt-1">8</p>
             <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
-              <ArrowDownRight size={12} />
-              2 more than last week
+              <ArrowDownRight size={12} />2 more than last week
             </p>
           </div>
           <div className="bg-white rounded-xl border border-border p-5">
             <div className="flex items-center justify-between">
-              <p className="text-sm text-muted font-medium">
-                Avg. Engagement
-              </p>
+              <p className="text-sm text-muted font-medium">Avg. Engagement</p>
               <Zap size={16} className="text-indigo-500" />
             </div>
             <p className="text-3xl font-bold mt-1">19 min</p>
@@ -187,6 +154,10 @@ export default function InsightsPage() {
           </div>
         </div>
 
+        {/* Recharts Interactive Section */}
+        <ChartsSection />
+
+        {/* Heatmap + Misconceptions */}
         <div className="grid lg:grid-cols-2 gap-6 mb-8">
           {/* Mastery Heatmap */}
           <div className="lg:col-span-2 bg-white rounded-xl border border-border p-6">
@@ -199,31 +170,22 @@ export default function InsightsPage() {
               </div>
               <div className="flex items-center gap-4 text-xs text-muted">
                 <span className="flex items-center gap-1.5">
-                  <span className="w-3 h-3 rounded bg-emerald-500" />
-                  85%+
+                  <span className="w-3 h-3 rounded bg-emerald-500" /> 85%+
                 </span>
                 <span className="flex items-center gap-1.5">
-                  <span className="w-3 h-3 rounded bg-emerald-300" />
-                  70-84%
+                  <span className="w-3 h-3 rounded bg-emerald-300" /> 70-84%
                 </span>
                 <span className="flex items-center gap-1.5">
-                  <span className="w-3 h-3 rounded bg-amber-300" />
-                  55-69%
+                  <span className="w-3 h-3 rounded bg-amber-300" /> 55-69%
                 </span>
                 <span className="flex items-center gap-1.5">
-                  <span className="w-3 h-3 rounded bg-orange-400" />
-                  40-54%
+                  <span className="w-3 h-3 rounded bg-orange-400" /> 40-54%
                 </span>
                 <span className="flex items-center gap-1.5">
-                  <span className="w-3 h-3 rounded bg-red-500" />
-                  &lt;40%
+                  <span className="w-3 h-3 rounded bg-red-500" /> &lt;40%
                 </span>
               </div>
             </div>
-            <p className="text-sm text-muted mb-5">
-              Each cell shows a student&apos;s mastery level for each learning
-              objective in the current unit.
-            </p>
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
@@ -265,22 +227,33 @@ export default function InsightsPage() {
             </div>
           </div>
 
-          {/* Misconceptions */}
-          <div className="bg-white rounded-xl border border-border">
+          {/* Misconceptions with filter */}
+          <div className="lg:col-span-2 bg-white rounded-xl border border-border">
             <div className="p-5 border-b border-border">
-              <div className="flex items-center gap-2">
-                <Brain size={18} className="text-amber-500" />
-                <h2 className="font-semibold text-lg">
-                  Detected Misconceptions
-                </h2>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Brain size={18} className="text-amber-500" />
+                  <h2 className="font-semibold text-lg">
+                    Detected Misconceptions
+                  </h2>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Filter size={14} className="text-muted" />
+                  <select
+                    value={severityFilter}
+                    onChange={(e) => setSeverityFilter(e.target.value)}
+                    className="text-sm border border-border rounded-lg px-2 py-1 bg-white"
+                  >
+                    <option value="all">All Severities</option>
+                    <option value="high">High Only</option>
+                    <option value="medium">Medium Only</option>
+                    <option value="low">Low Only</option>
+                  </select>
+                </div>
               </div>
-              <p className="text-sm text-muted mt-1">
-                AI-detected patterns where students demonstrate
-                misunderstandings.
-              </p>
             </div>
             <div className="divide-y divide-border">
-              {misconceptions.map((m, i) => (
+              {filteredMisconceptions.map((m, i) => (
                 <div key={i} className="p-5">
                   <div className="flex items-start justify-between mb-1">
                     <div className="flex items-center gap-2">
@@ -312,7 +285,7 @@ export default function InsightsPage() {
                         <ArrowUpRight size={12} />
                       ) : (
                         "—"
-                      )}
+                      )}{" "}
                       {m.trend}
                     </span>
                   </div>
@@ -322,112 +295,11 @@ export default function InsightsPage() {
                   </p>
                 </div>
               ))}
-            </div>
-          </div>
-
-          {/* Right Column */}
-          <div className="space-y-6">
-            {/* Engagement Chart */}
-            <div className="bg-white rounded-xl border border-border p-6">
-              <div className="flex items-center gap-2 mb-4">
-                <Zap size={18} className="text-indigo-500" />
-                <h2 className="font-semibold text-lg">Weekly Engagement</h2>
-              </div>
-              <p className="text-sm text-muted mb-5">
-                Sessions per day and average duration.
-              </p>
-              <div className="flex items-end gap-2 h-36">
-                {engagementData.map((d) => (
-                  <div key={d.label} className="flex-1 flex flex-col items-center gap-1">
-                    <span className="text-[10px] text-muted font-medium">
-                      {d.sessions}
-                    </span>
-                    <div
-                      className="w-full bg-indigo-500 rounded-t-md transition-all hover:bg-indigo-600"
-                      style={{
-                        height: `${(d.sessions / maxSessions) * 100}%`,
-                        minHeight: "4px",
-                      }}
-                    />
-                    <span className="text-[10px] text-muted">{d.label}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Skill Progression */}
-            <div className="bg-white rounded-xl border border-border p-6">
-              <div className="flex items-center gap-2 mb-4">
-                <TrendingUp size={18} className="text-emerald-500" />
-                <h2 className="font-semibold text-lg">
-                  Class Mastery Progression
-                </h2>
-              </div>
-              <p className="text-sm text-muted mb-5">
-                Average mastery across all students over time.
-              </p>
-              <div className="space-y-3">
-                {skillProgression.map((s) => (
-                  <div key={s.week} className="flex items-center gap-3">
-                    <span className="text-xs text-muted w-14">{s.week}</span>
-                    <div className="flex-1 h-4 bg-gray-100 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-gradient-to-r from-indigo-500 to-emerald-500 rounded-full transition-all"
-                        style={{ width: `${s.mastery}%` }}
-                      />
-                    </div>
-                    <span className="text-sm font-semibold w-10 text-right">
-                      {s.mastery}%
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Struggling Students */}
-            <div className="bg-white rounded-xl border border-border p-6">
-              <div className="flex items-center gap-2 mb-4">
-                <AlertTriangle size={18} className="text-red-500" />
-                <h2 className="font-semibold text-lg">Needs Attention</h2>
-              </div>
-              <div className="space-y-3">
-                {[
-                  {
-                    name: "Taylor Nguyen",
-                    mastery: 45,
-                    issue: "Struggling with DNA replication concepts",
-                  },
-                  {
-                    name: "Sam Okafor",
-                    mastery: 38,
-                    issue: "Consistently confuses mitosis and meiosis",
-                  },
-                  {
-                    name: "Riley Brooks",
-                    mastery: 42,
-                    issue: "Low engagement — only 2 sessions this week",
-                  },
-                ].map((s, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center gap-3 p-3 rounded-lg bg-red-50 border border-red-100"
-                  >
-                    <div className="w-8 h-8 rounded-full bg-red-500 flex items-center justify-center text-white text-xs font-bold">
-                      {s.name
-                        .split(" ")
-                        .map((w) => w[0])
-                        .join("")}
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-sm font-medium">{s.name}</p>
-                      <p className="text-xs text-red-600">{s.issue}</p>
-                    </div>
-                    <span className="text-sm font-bold text-red-600">
-                      {s.mastery}%
-                    </span>
-                  </div>
-                ))}
-              </div>
+              {filteredMisconceptions.length === 0 && (
+                <p className="p-5 text-sm text-muted text-center">
+                  No misconceptions match this filter.
+                </p>
+              )}
             </div>
           </div>
         </div>
