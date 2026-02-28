@@ -23,6 +23,16 @@ export interface UnitConfig {
   boundaries: Boundary[];
   capabilities: Capability[];
   allowedSources: string[];
+  materials: CourseMaterial[];
+}
+
+export interface CourseMaterial {
+  id: string;
+  name: string;
+  type: "pdf" | "txt" | "paste";
+  content: string;
+  addedAt: string;
+  charCount: number;
 }
 
 export interface Objective {
@@ -89,4 +99,5 @@ export const DEFAULT_UNIT_CONFIG: UnitConfig = {
     { label: "Multiple explanation styles", enabled: true },
   ],
   allowedSources: [],
+  materials: [],
 };

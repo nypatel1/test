@@ -86,7 +86,7 @@ export function addUnit(courseId: string, name: string): Unit {
     name,
     status: "active",
     createdAt: new Date().toISOString(),
-    config: { ...DEFAULT_UNIT_CONFIG, objectives: [], allowedSources: [] },
+    config: { ...DEFAULT_UNIT_CONFIG, objectives: [], allowedSources: [], materials: [] },
   };
   const units = getUnits();
   units.push(unit);

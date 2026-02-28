@@ -21,7 +21,8 @@ import {
 } from "lucide-react";
 import { useIsMounted } from "@/lib/useIsMounted";
 import { getUnit, updateUnit, getCourses, getUnitStats } from "@/lib/storage";
-import { Unit, UnitConfig } from "@/lib/types";
+import { Unit, UnitConfig, CourseMaterial } from "@/lib/types";
+import MaterialUpload from "../../../components/MaterialUpload";
 
 export default function UnitDetailClient() {
   const params = useParams();
@@ -390,6 +391,14 @@ export default function UnitDetailClient() {
                   Add
                 </button>
               </div>
+            </div>
+
+            {/* Course Materials Upload */}
+            <div className="lg:col-span-2">
+              <MaterialUpload
+                materials={config.materials || []}
+                onChange={(mats: CourseMaterial[]) => updateConfig({ materials: mats })}
+              />
             </div>
           </div>
         )}
