@@ -101,6 +101,16 @@ function ChatInner() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // Save session when leaving the page
+  useEffect(() => {
+    const handleBeforeUnload = () => endSession();
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      endSession();
+    };
+  }, []);
+
   const sendToAPI = useCallback(
     async (
       allMessages: ChatMessage[],
