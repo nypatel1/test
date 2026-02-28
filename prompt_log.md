@@ -5,7 +5,7 @@
 ---
 
 
-### Phase 1: Concept & Architecture Planning
+### Phase 1: Concept Planning
 
 **Prompt:** The solution is for implementation in schools. We provide a way for teachers to create a model designed to only help students learn, focusing on the topics being addressed in class and the goals for actual understanding that teachers want for the students. Then the students have a chatbot where they are able to use it to learn, and it can help them learn through providing teaching catering to their learning style. I want to create the front end for this system right now to visualize what it would look like for teachers, and also on the student side. Also providing data insight from students to teachers about understanding and things. Having a mockup or prototype with examples is what we are looking for, we want to have the best enhanced user experience where the hypothetical system in action would work with the AI integration. 
 
@@ -14,7 +14,7 @@
 
 ---
 
-### Phase 2: Static Prototype (UI Mockup)
+### Phase 2: Prototype (UI Mockup)
 
 **Prompt:** I want to build the front-end prototype with:
 - Landing page explaining the closed-loop system
