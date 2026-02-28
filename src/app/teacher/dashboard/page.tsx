@@ -1,102 +1,91 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import TeacherLayout from "../../components/TeacherLayout";
 import Link from "next/link";
 import {
   BookOpen,
   ArrowRight,
   Activity,
-  Brain,
   Plus,
-  MessageSquare,
-  Clock,
+  Loader2,
 } from "lucide-react";
-import { useIsMounted } from "@/lib/useIsMounted";
-import { getCourses, getUnits, getSessions, getAllStats } from "@/lib/storage";
-import { Course, Unit, ChatSession } from "@/lib/types";
+import { useAuth } from "@/lib/AuthContext";
+import * as db from "@/lib/db";
 
 export default function TeacherDashboard() {
-  const mounted = useIsMounted();
-  const [courses] = useState<Course[]>(() =>
-    typeof window !== "undefined" ? getCourses() : []
-  );
-  const [units] = useState<Unit[]>(() =>
-    typeof window !== "undefined" ? getUnits() : []
-  );
-  const [sessions] = useState<ChatSession[]>(() =>
-    typeof window !== "undefined" ? getSessions() : []
-  );
+  const { profile } = useAuth();
+  const [courses, setCourses] = useState<any[]>([]);
+  const [sessions, setSessions] = useState<any[]>([]);
+  const [units, setUnits] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  if (!mounted) return null;
+  useEffect(() => {
+    if (!profile) return;
+    (async () => {
+      const [c, u, s] = await Promise.all([
+        db.getCourses(profile.id),
+        db.getAllTeacherUnits(profile.id),
+        db.getTeacherSessions(profile.id),
+      ]);
+      setCourses(c);
+      setUnits(u);
+      setSessions(s);
+      setLoading(false);
+    })();
+  }, [profile]);
 
-  const stats = getAllStats();
+  if (loading) {
+    return (
+      <TeacherLayout>
+        <div className="flex items-center justify-center h-64">
+          <Loader2 size={24} className="animate-spin text-primary" />
+        </div>
+      </TeacherLayout>
+    );
+  }
 
-  const recentSessions = [...sessions]
-    .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())
-    .slice(0, 8);
+  const totalMessages = sessions.reduce(
+    (sum: number, s: any) => sum + (Array.isArray(s.messages) ? s.messages.length : 0),
+    0
+  );
 
   return (
     <TeacherLayout>
       <div className="max-w-7xl animate-fade-in">
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
+          <h1 className="text-2xl font-bold text-foreground">
+            Welcome, {profile?.full_name?.split(" ")[0] || "Teacher"}
+          </h1>
           <p className="text-muted mt-1">
-            Overview of your courses, units, and student activity.
+            Here&apos;s an overview of your courses and student activity.
           </p>
         </div>
 
         {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
-          <div className="bg-white rounded-xl border border-border p-5 hover:shadow-md transition-shadow">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-sm text-muted font-medium">Courses</p>
-                <p className="text-3xl font-bold mt-1">{stats.totalCourses}</p>
-                <p className="text-xs text-muted mt-1">{stats.totalUnits} units total</p>
-              </div>
-              <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-indigo-100 text-indigo-600">
-                <BookOpen size={20} />
-              </div>
-            </div>
+          <div className="bg-white rounded-xl border border-border p-5">
+            <p className="text-sm text-muted font-medium">Courses</p>
+            <p className="text-3xl font-bold mt-1">{courses.length}</p>
+            <p className="text-xs text-muted mt-1">{units.length} units total</p>
           </div>
-          <div className="bg-white rounded-xl border border-border p-5 hover:shadow-md transition-shadow">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-sm text-muted font-medium">Chat Sessions</p>
-                <p className="text-3xl font-bold mt-1">{stats.totalSessions}</p>
-                <p className="text-xs text-muted mt-1">{stats.totalMessages} total messages</p>
-              </div>
-              <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-cyan-100 text-cyan-600">
-                <MessageSquare size={20} />
-              </div>
-            </div>
+          <div className="bg-white rounded-xl border border-border p-5">
+            <p className="text-sm text-muted font-medium">Chat Sessions</p>
+            <p className="text-3xl font-bold mt-1">{sessions.length}</p>
+            <p className="text-xs text-muted mt-1">{totalMessages} messages</p>
           </div>
-          <div className="bg-white rounded-xl border border-border p-5 hover:shadow-md transition-shadow">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-sm text-muted font-medium">Study Time</p>
-                <p className="text-3xl font-bold mt-1">{stats.totalMinutes} min</p>
-                <p className="text-xs text-muted mt-1">across all sessions</p>
-              </div>
-              <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-emerald-100 text-emerald-600">
-                <Clock size={20} />
-              </div>
-            </div>
+          <div className="bg-white rounded-xl border border-border p-5">
+            <p className="text-sm text-muted font-medium">Study Time</p>
+            <p className="text-3xl font-bold mt-1">
+              {sessions.reduce((s: number, x: any) => s + (x.duration_minutes || 0), 0)} min
+            </p>
           </div>
-          <div className="bg-white rounded-xl border border-border p-5 hover:shadow-md transition-shadow">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-sm text-muted font-medium">Units Configured</p>
-                <p className="text-3xl font-bold mt-1">
-                  {units.filter((u) => u.config.objectives.length > 0).length}
-                </p>
-                <p className="text-xs text-muted mt-1">with objectives set</p>
-              </div>
-              <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-amber-100 text-amber-600">
-                <Brain size={20} />
-              </div>
-            </div>
+          <div className="bg-white rounded-xl border border-border p-5">
+            <p className="text-sm text-muted font-medium">Configured Units</p>
+            <p className="text-3xl font-bold mt-1">
+              {units.filter((u: any) => u.config?.objectives?.length > 0).length}
+            </p>
+            <p className="text-xs text-muted mt-1">with objectives set</p>
           </div>
         </div>
 
@@ -105,7 +94,7 @@ export default function TeacherDashboard() {
             <BookOpen size={48} className="text-gray-200 mx-auto mb-4" />
             <h3 className="font-semibold text-lg mb-2">Get started</h3>
             <p className="text-muted text-sm mb-4">
-              Create your first course and unit to start using AI tutoring with your students.
+              Create your first course to start using Riseva with your students.
             </p>
             <Link
               href="/teacher/courses"
@@ -127,32 +116,30 @@ export default function TeacherDashboard() {
                   View insights
                 </Link>
               </div>
-              {recentSessions.length === 0 ? (
+              {sessions.length === 0 ? (
                 <div className="px-5 py-8 text-center text-muted text-sm">
-                  No chat sessions yet. Students can start sessions from the student portal.
+                  No chat sessions yet. Share your class codes with students to get started.
                 </div>
               ) : (
                 <div className="divide-y divide-border">
-                  {recentSessions.map((s) => {
-                    const unit = units.find((u) => u.id === s.unitId);
-                    const ago = getTimeAgo(s.startedAt);
-                    return (
-                      <div key={s.id} className="flex items-center gap-4 px-5 py-3.5 hover:bg-surface-hover transition-colors">
-                        <div className="w-9 h-9 rounded-full bg-indigo-500 flex items-center justify-center text-white text-xs font-bold">
-                          <MessageSquare size={14} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">
-                            {unit?.name || "Unknown Unit"}
-                          </p>
-                          <p className="text-xs text-muted">
-                            {s.messages.length} messages &middot; {s.questionsAsked} questions
-                          </p>
-                        </div>
-                        <span className="text-xs text-muted">{ago}</span>
+                  {sessions.slice(0, 8).map((s: any) => (
+                    <div key={s.id} className="flex items-center gap-4 px-5 py-3.5 hover:bg-surface-hover transition-colors">
+                      <div className="w-9 h-9 rounded-full bg-indigo-500 flex items-center justify-center text-white text-xs font-bold">
+                        {s.profiles?.full_name?.[0] || "S"}
                       </div>
-                    );
-                  })}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">
+                          {s.profiles?.full_name || "Student"} — {s.units?.name || "Unit"}
+                        </p>
+                        <p className="text-xs text-muted">
+                          {Array.isArray(s.messages) ? s.messages.length : 0} messages &middot; {s.questions_asked || 0} questions
+                        </p>
+                      </div>
+                      <span className="text-xs text-muted">
+                        {new Date(s.started_at).toLocaleDateString()}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -169,27 +156,22 @@ export default function TeacherDashboard() {
                 </Link>
               </div>
               <div className="divide-y divide-border">
-                {courses.map((c) => {
-                  const courseUnits = units.filter((u) => u.courseId === c.id);
-                  return (
-                    <Link
-                      key={c.id}
-                      href="/teacher/courses"
-                      className="flex items-center gap-4 px-5 py-3.5 hover:bg-surface-hover transition-colors"
-                    >
-                      <div className="w-9 h-9 rounded-lg bg-indigo-100 flex items-center justify-center text-primary font-bold text-sm">
-                        {c.name.charAt(0)}
-                      </div>
-                      <div className="flex-1">
-                        <p className="font-medium text-sm">{c.name}</p>
-                        <p className="text-xs text-muted">
-                          {courseUnits.length} unit{courseUnits.length !== 1 ? "s" : ""}
-                        </p>
-                      </div>
-                      <ArrowRight size={14} className="text-muted" />
-                    </Link>
-                  );
-                })}
+                {courses.map((c: any) => (
+                  <Link
+                    key={c.id}
+                    href="/teacher/courses"
+                    className="flex items-center gap-4 px-5 py-3.5 hover:bg-surface-hover transition-colors"
+                  >
+                    <div className="w-9 h-9 rounded-lg bg-indigo-100 flex items-center justify-center text-primary font-bold text-sm">
+                      {c.name.charAt(0)}
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-medium text-sm">{c.name}</p>
+                      <p className="text-xs text-muted">Code: {c.class_code}</p>
+                    </div>
+                    <ArrowRight size={14} className="text-muted" />
+                  </Link>
+                ))}
               </div>
             </div>
           </div>
@@ -197,15 +179,4 @@ export default function TeacherDashboard() {
       </div>
     </TeacherLayout>
   );
-}
-
-function getTimeAgo(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
 }

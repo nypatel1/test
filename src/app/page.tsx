@@ -1,7 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 import Logo from "./components/Logo";
+import { useAuth } from "@/lib/AuthContext";
 import {
   Shield,
   Brain,
@@ -50,24 +53,37 @@ const differentiators = [
 ];
 
 export default function Home() {
+  const { user, profile, loading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!loading && user && profile) {
+      if (profile.role === "teacher") router.push("/teacher/dashboard");
+      else router.push("/student/learn");
+    }
+  }, [user, profile, loading, router]);
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-indigo-50 via-white to-white">
       {/* Header */}
       <header className="flex items-center justify-between px-8 py-5 max-w-7xl mx-auto">
         <Logo size="md" />
         <div className="flex items-center gap-4">
-          <Link
-            href="/student/learn"
-            className="text-sm font-medium text-muted hover:text-foreground transition-colors"
-          >
-            Student Portal
-          </Link>
-          <Link
-            href="/teacher/dashboard"
-            className="px-5 py-2.5 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary-dark transition-colors shadow-lg shadow-indigo-500/25"
-          >
-            Teacher Portal
-          </Link>
+          {user ? (
+            <Link
+              href={profile?.role === "teacher" ? "/teacher/dashboard" : "/student/learn"}
+              className="px-5 py-2.5 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary-dark transition-colors shadow-lg shadow-indigo-500/25"
+            >
+              Go to Dashboard
+            </Link>
+          ) : (
+            <Link
+              href="/auth"
+              className="px-5 py-2.5 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary-dark transition-colors shadow-lg shadow-indigo-500/25"
+            >
+              Sign In
+            </Link>
+          )}
         </div>
       </header>
 
@@ -88,14 +104,14 @@ export default function Home() {
         </p>
         <div className="mt-10 flex items-center justify-center gap-4">
           <Link
-            href="/teacher/dashboard"
+            href="/auth"
             className="inline-flex items-center gap-2 px-7 py-3.5 rounded-xl bg-primary text-white font-semibold hover:bg-primary-dark transition-all shadow-xl shadow-indigo-500/25 text-base"
           >
             <BookOpen size={18} />
-            Explore Teacher Dashboard
+            Get Started
           </Link>
           <Link
-            href="/student/learn"
+            href="/auth"
             className="inline-flex items-center gap-2 px-7 py-3.5 rounded-xl border-2 border-primary text-primary font-semibold hover:bg-indigo-50 transition-all text-base"
           >
             <GraduationCap size={18} />
