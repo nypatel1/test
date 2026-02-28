@@ -108,23 +108,17 @@ export async function deleteUnit(unitId: string) {
 // ── Enrollments ──
 
 export async function joinCourse(studentId: string, classCode: string) {
-  const { data: course } = await supabase
-    .from("courses")
-    .select("id")
-    .eq("class_code", classCode.toUpperCase().trim())
-    .single();
-
-  if (!course) throw new Error("Invalid class code");
-
-  const { error } = await supabase
-    .from("enrollments")
-    .insert({ student_id: studentId, course_id: course.id });
+  const { data, error } = await supabase.rpc("join_course_by_code", {
+    code: classCode,
+  });
 
   if (error) {
-    if (error.code === "23505") throw new Error("Already enrolled in this course");
+    if (error.message.includes("Invalid class code")) throw new Error("Invalid class code");
+    if (error.message.includes("Already enrolled")) throw new Error("Already enrolled in this course");
     throw error;
   }
-  return course;
+
+  return { id: data };
 }
 
 export async function getEnrollments(courseId: string) {
