@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useIsMounted } from "@/lib/useIsMounted";
+import { useParams } from "next/navigation";
 import TeacherLayout from "../../../components/TeacherLayout";
 import Link from "next/link";
 import {
@@ -15,43 +15,59 @@ import {
   XCircle,
   Save,
   Eye,
-  Users,
   MessageSquare,
   Check,
   Plus,
 } from "lucide-react";
-import { TeacherConfig, DEFAULT_TEACHER_CONFIG } from "@/lib/types";
-import { getTeacherConfig, saveTeacherConfig } from "@/lib/storage";
-
-const studentProgress = [
-  { name: "Alex Rivera", mastery: 92, sessions: 8, status: "mastered" },
-  { name: "Jordan Kim", mastery: 78, sessions: 12, status: "progressing" },
-  { name: "Taylor Nguyen", mastery: 45, sessions: 6, status: "struggling" },
-  { name: "Morgan Patel", mastery: 88, sessions: 9, status: "mastered" },
-  { name: "Casey Wright", mastery: 62, sessions: 4, status: "progressing" },
-  { name: "Sam Okafor", mastery: 38, sessions: 10, status: "struggling" },
-];
+import { useIsMounted } from "@/lib/useIsMounted";
+import { getUnit, updateUnit, getCourses, getUnitStats } from "@/lib/storage";
+import { Unit, UnitConfig } from "@/lib/types";
 
 export default function UnitDetailClient() {
-  const [config, setConfig] = useState<TeacherConfig>(() => {
-    if (typeof window !== "undefined") {
-      return getTeacherConfig();
-    }
-    return DEFAULT_TEACHER_CONFIG;
-  });
-  const [tab, setTab] = useState<"config" | "students" | "preview">("config");
-  const [saved, setSaved] = useState(false);
+  const params = useParams();
   const mounted = useIsMounted();
-  const [newObjective, setNewObjective] = useState("");
 
-  const handleSave = () => {
-    saveTeacherConfig(config);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  const [unit, setUnit] = useState<Unit | null>(() => {
+    if (typeof window === "undefined") return null;
+    return getUnit(params.id as string) || null;
+  });
+  const [saved, setSaved] = useState(false);
+  const [newObjective, setNewObjective] = useState("");
+  const [newSource, setNewSource] = useState("");
+  const [tab, setTab] = useState<"config" | "preview">("config");
+
+  if (!mounted || !unit) {
+    if (mounted && !unit) {
+      return (
+        <TeacherLayout>
+          <div className="max-w-4xl text-center py-20">
+            <h2 className="text-xl font-semibold mb-2">Unit not found</h2>
+            <p className="text-muted mb-4">
+              This unit doesn&apos;t exist. Create one from the Courses page.
+            </p>
+            <Link href="/teacher/courses" className="text-primary font-medium hover:underline">
+              Go to Courses
+            </Link>
+          </div>
+        </TeacherLayout>
+      );
+    }
+    return null;
+  }
+
+  const course = getCourses().find((c) => c.id === unit.courseId);
+  const stats = getUnitStats(unit.id);
+  const config = unit.config;
+
+  const updateConfig = (partial: Partial<UnitConfig>) => {
+    const updated = { ...unit, config: { ...unit.config, ...partial } };
+    setUnit(updated);
   };
 
-  const updateConfig = (partial: Partial<TeacherConfig>) => {
-    setConfig((prev) => ({ ...prev, ...partial }));
+  const handleSave = () => {
+    updateUnit(unit.id, unit);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
   };
 
   const toggleBoundary = (index: number) => {
@@ -62,51 +78,30 @@ export default function UnitDetailClient() {
 
   const addObjective = () => {
     if (!newObjective.trim()) return;
-    const newObj = {
-      id: Date.now(),
-      text: newObjective.trim(),
-      depth: "Explain",
-      mastery: 0,
-    };
-    updateConfig({ objectives: [...config.objectives, newObj] });
+    const obj = { id: Date.now(), text: newObjective.trim(), depth: "Explain" };
+    updateConfig({ objectives: [...config.objectives, obj] });
     setNewObjective("");
   };
 
   const removeObjective = (id: number) => {
-    updateConfig({
-      objectives: config.objectives.filter((o) => o.id !== id),
-    });
+    updateConfig({ objectives: config.objectives.filter((o) => o.id !== id) });
+  };
+
+  const addSource = () => {
+    if (!newSource.trim()) return;
+    updateConfig({ allowedSources: [...config.allowedSources, newSource.trim()] });
+    setNewSource("");
   };
 
   const removeSource = (source: string) => {
-    updateConfig({
-      allowedSources: config.allowedSources.filter((s) => s !== source),
-    });
+    updateConfig({ allowedSources: config.allowedSources.filter((s) => s !== source) });
   };
 
-  if (!mounted) return null;
-
   const approaches = [
-    {
-      id: "socratic" as const,
-      name: "Socratic Method",
-      desc: "AI asks guiding questions to help students discover answers",
-    },
-    {
-      id: "step-by-step" as const,
-      name: "Step-by-Step",
-      desc: "AI breaks concepts into small, sequential steps",
-    },
-    {
-      id: "conceptual" as const,
-      name: "Conceptual-First",
-      desc: "AI builds the big picture first, then details",
-    },
-    {
-      id: "example-driven" as const,
-      name: "Example-Driven",
-      desc: "AI uses real-world examples and analogies",
-    },
+    { id: "socratic" as const, name: "Socratic Method", desc: "Guide through questions" },
+    { id: "step-by-step" as const, name: "Step-by-Step", desc: "Sequential small steps" },
+    { id: "conceptual" as const, name: "Conceptual-First", desc: "Big picture then details" },
+    { id: "example-driven" as const, name: "Example-Driven", desc: "Real-world analogies" },
   ];
 
   return (
@@ -122,23 +117,21 @@ export default function UnitDetailClient() {
 
         <div className="flex items-start justify-between mb-6">
           <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold">{config.unitName}</h1>
-              <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-xs font-medium">
-                Active
-              </span>
-            </div>
+            <h1 className="text-2xl font-bold">{unit.name}</h1>
             <p className="text-muted mt-1">
-              {config.courseName} &middot; 34 students &middot; 5 days remaining
+              {course?.name || "Unknown Course"}
+              {stats.totalSessions > 0 && (
+                <> &middot; {stats.totalSessions} sessions &middot; {stats.totalMinutes} min total</>
+              )}
             </p>
           </div>
           <div className="flex items-center gap-2">
             <Link
-              href="/student/chat"
+              href={`/student/chat?unit=${unit.id}`}
               className="px-4 py-2 border border-border rounded-lg text-sm font-medium hover:bg-surface-hover transition-colors flex items-center gap-1.5"
             >
               <Eye size={15} />
-              Preview as Student
+              Open as Student
             </Link>
             <button
               onClick={handleSave}
@@ -158,7 +151,6 @@ export default function UnitDetailClient() {
         <div className="flex gap-1 mb-6 bg-gray-100 rounded-lg p-1 w-fit">
           {[
             { id: "config" as const, label: "AI Configuration", icon: Sliders },
-            { id: "students" as const, label: "Student Progress", icon: Users },
             { id: "preview" as const, label: "Chat Preview", icon: MessageSquare },
           ].map((t) => (
             <button
@@ -185,45 +177,25 @@ export default function UnitDetailClient() {
                 <h2 className="font-semibold text-lg">Learning Objectives</h2>
               </div>
               <p className="text-sm text-muted mb-4">
-                Define what mastery looks like. These are injected into the AI&apos;s
-                system prompt.
+                What should students understand by the end of this unit? These are sent to the AI.
               </p>
+              {config.objectives.length === 0 && (
+                <p className="text-sm text-muted italic mb-3">
+                  No objectives yet. Add at least one so the AI knows what to teach toward.
+                </p>
+              )}
               <div className="space-y-3">
                 {config.objectives.map((obj) => (
                   <div
                     key={obj.id}
                     className="flex items-start gap-3 p-3 rounded-lg border border-border hover:border-primary/20 transition-colors group"
                   >
-                    <CheckCircle2
-                      size={16}
-                      className="text-primary mt-0.5 flex-shrink-0"
-                    />
+                    <CheckCircle2 size={16} className="text-primary mt-0.5 flex-shrink-0" />
                     <div className="flex-1">
                       <p className="text-sm">{obj.text}</p>
-                      <div className="flex items-center gap-3 mt-1.5">
-                        <span className="px-2 py-0.5 rounded bg-indigo-100 text-indigo-700 text-xs font-medium">
-                          {obj.depth}
-                        </span>
-                        {obj.mastery > 0 && (
-                          <div className="flex items-center gap-1.5">
-                            <div className="w-12 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                              <div
-                                className={`h-full rounded-full ${
-                                  obj.mastery >= 75
-                                    ? "bg-emerald-500"
-                                    : obj.mastery >= 60
-                                    ? "bg-amber-500"
-                                    : "bg-red-500"
-                                }`}
-                                style={{ width: `${obj.mastery}%` }}
-                              />
-                            </div>
-                            <span className="text-xs text-muted">
-                              {obj.mastery}%
-                            </span>
-                          </div>
-                        )}
-                      </div>
+                      <span className="px-2 py-0.5 rounded bg-indigo-100 text-indigo-700 text-xs font-medium mt-1 inline-block">
+                        {obj.depth}
+                      </span>
                     </div>
                     <button
                       onClick={() => removeObjective(obj.id)}
@@ -240,7 +212,7 @@ export default function UnitDetailClient() {
                   value={newObjective}
                   onChange={(e) => setNewObjective(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && addObjective()}
-                  placeholder="Add a new objective..."
+                  placeholder="e.g., Explain the stages of mitosis"
                   className="flex-1 text-sm border border-border rounded-lg px-3 py-2 outline-none focus:border-primary/40"
                 />
                 <button
@@ -248,8 +220,7 @@ export default function UnitDetailClient() {
                   disabled={!newObjective.trim()}
                   className="px-3 py-2 bg-primary text-white rounded-lg text-sm disabled:opacity-50 flex items-center gap-1"
                 >
-                  <Plus size={14} />
-                  Add
+                  <Plus size={14} /> Add
                 </button>
               </div>
             </div>
@@ -288,33 +259,64 @@ export default function UnitDetailClient() {
               </div>
 
               <div className="bg-white rounded-xl border border-border p-6">
-                <div className="flex items-center gap-2 mb-4">
+                <div className="flex items-center gap-2 mb-2">
                   <Sliders size={18} className="text-emerald-500" />
-                  <h2 className="font-semibold text-lg">Scaffolding Level</h2>
+                  <h2 className="font-semibold text-lg">Scaffolding: {config.scaffolding}/5</h2>
                 </div>
                 <input
                   type="range"
                   min={1}
                   max={5}
                   value={config.scaffolding}
-                  onChange={(e) =>
-                    updateConfig({ scaffolding: Number(e.target.value) })
-                  }
+                  onChange={(e) => updateConfig({ scaffolding: Number(e.target.value) })}
                   className="w-full accent-[#4f46e5]"
                 />
                 <div className="flex justify-between text-xs text-muted mt-1">
-                  <span>Minimal hints</span>
-                  <span>Balanced</span>
+                  <span>Minimal</span>
                   <span>Heavy support</span>
                 </div>
-                <div className="p-3 bg-indigo-50 rounded-lg mt-3">
-                  <p className="text-sm text-indigo-800">
-                    {config.scaffolding <= 2
-                      ? "Minimal hints — students work through problems with little guidance."
-                      : config.scaffolding <= 3
-                      ? "Moderate scaffolding — guiding questions with partial explanations."
-                      : "Heavy scaffolding — detailed step-by-step support for all students."}
-                  </p>
+              </div>
+
+              {/* Response Style */}
+              <div className="bg-white rounded-xl border border-border p-6">
+                <h2 className="font-semibold mb-3">Response Style</h2>
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs font-medium text-muted mb-1.5 block">Length</label>
+                    <div className="flex gap-2">
+                      {(["concise", "medium", "detailed"] as const).map((opt) => (
+                        <button
+                          key={opt}
+                          onClick={() => updateConfig({ responseLength: opt })}
+                          className={`flex-1 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                            config.responseLength === opt
+                              ? "border-primary bg-indigo-50 text-primary"
+                              : "border-border"
+                          }`}
+                        >
+                          {opt.charAt(0).toUpperCase() + opt.slice(1)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-muted mb-1.5 block">Tone</label>
+                    <div className="flex gap-2">
+                      {(["encouraging", "neutral", "challenging"] as const).map((opt) => (
+                        <button
+                          key={opt}
+                          onClick={() => updateConfig({ tone: opt })}
+                          className={`flex-1 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                            config.tone === opt
+                              ? "border-primary bg-indigo-50 text-primary"
+                              : "border-border"
+                          }`}
+                        >
+                          {opt.charAt(0).toUpperCase() + opt.slice(1)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -323,22 +325,14 @@ export default function UnitDetailClient() {
             <div className="lg:col-span-2 bg-white rounded-xl border border-border p-6">
               <div className="flex items-center gap-2 mb-4">
                 <Shield size={18} className="text-red-500" />
-                <h2 className="font-semibold text-lg">
-                  Boundaries & Restrictions
-                </h2>
+                <h2 className="font-semibold text-lg">Boundaries & Restrictions</h2>
               </div>
-              <p className="text-sm text-muted mb-4">
-                These guardrails are directly injected into the AI system prompt.
-                Toggle them to control student interactions.
-              </p>
               <div className="grid md:grid-cols-2 gap-3">
                 {config.boundaries.map((b, i) => (
                   <div
                     key={i}
                     className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${
-                      b.enabled
-                        ? "border-emerald-200 bg-emerald-50/50"
-                        : "border-border"
+                      b.enabled ? "border-emerald-200 bg-emerald-50/50" : "border-border"
                     }`}
                   >
                     <button
@@ -365,137 +359,37 @@ export default function UnitDetailClient() {
                 <BookOpen size={18} className="text-primary" />
                 <h2 className="font-semibold text-lg">Allowed Sources</h2>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2 mb-3">
                 {config.allowedSources.map((src) => (
-                  <div
-                    key={src}
-                    className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-lg text-sm"
-                  >
+                  <div key={src} className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-lg text-sm">
                     <BookOpen size={13} className="text-muted" />
                     {src}
-                    <button
-                      onClick={() => removeSource(src)}
-                      className="text-gray-400 hover:text-red-500 transition-colors"
-                    >
+                    <button onClick={() => removeSource(src)} className="text-gray-400 hover:text-red-500">
                       <XCircle size={13} />
                     </button>
                   </div>
                 ))}
+                {config.allowedSources.length === 0 && (
+                  <p className="text-sm text-muted italic">No sources added. AI will use general knowledge.</p>
+                )}
               </div>
-            </div>
-          </div>
-        )}
-
-        {tab === "students" && (
-          <div className="bg-white rounded-xl border border-border">
-            <div className="p-5 border-b border-border">
-              <h2 className="font-semibold text-lg">
-                Student Progress — {config.unitName}
-              </h2>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-border bg-gray-50">
-                    <th className="text-left text-xs font-semibold text-muted px-5 py-3">
-                      Student
-                    </th>
-                    <th className="text-left text-xs font-semibold text-muted px-5 py-3">
-                      Mastery
-                    </th>
-                    <th className="text-left text-xs font-semibold text-muted px-5 py-3">
-                      Sessions
-                    </th>
-                    <th className="text-left text-xs font-semibold text-muted px-5 py-3">
-                      Status
-                    </th>
-                    <th className="text-left text-xs font-semibold text-muted px-5 py-3">
-                      Objectives
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {studentProgress.map((s, i) => (
-                    <tr
-                      key={i}
-                      className="hover:bg-surface-hover transition-colors"
-                    >
-                      <td className="px-5 py-3.5">
-                        <div className="flex items-center gap-3">
-                          <div
-                            className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold ${
-                              s.status === "mastered"
-                                ? "bg-emerald-500"
-                                : s.status === "struggling"
-                                ? "bg-amber-500"
-                                : "bg-indigo-500"
-                            }`}
-                          >
-                            {s.name
-                              .split(" ")
-                              .map((w) => w[0])
-                              .join("")}
-                          </div>
-                          <span className="text-sm font-medium">{s.name}</span>
-                        </div>
-                      </td>
-                      <td className="px-5 py-3.5">
-                        <div className="flex items-center gap-2">
-                          <div className="w-20 h-2 bg-gray-100 rounded-full overflow-hidden">
-                            <div
-                              className={`h-full rounded-full ${
-                                s.mastery >= 75
-                                  ? "bg-emerald-500"
-                                  : s.mastery >= 60
-                                  ? "bg-amber-500"
-                                  : "bg-red-500"
-                              }`}
-                              style={{ width: `${s.mastery}%` }}
-                            />
-                          </div>
-                          <span className="text-sm font-semibold">
-                            {s.mastery}%
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-5 py-3.5 text-sm text-muted">
-                        {s.sessions}
-                      </td>
-                      <td className="px-5 py-3.5">
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                            s.status === "mastered"
-                              ? "bg-emerald-100 text-emerald-700"
-                              : s.status === "struggling"
-                              ? "bg-amber-100 text-amber-700"
-                              : "bg-indigo-100 text-indigo-700"
-                          }`}
-                        >
-                          {s.status.charAt(0).toUpperCase() + s.status.slice(1)}
-                        </span>
-                      </td>
-                      <td className="px-5 py-3.5">
-                        <div className="flex gap-1">
-                          {config.objectives.slice(0, 6).map((_, j) => (
-                            <div
-                              key={j}
-                              className={`w-5 h-5 rounded text-[10px] font-bold flex items-center justify-center ${
-                                j < Math.floor((s.mastery / 100) * 6)
-                                  ? "bg-emerald-100 text-emerald-700"
-                                  : j === Math.floor((s.mastery / 100) * 6)
-                                  ? "bg-amber-100 text-amber-700"
-                                  : "bg-gray-100 text-gray-400"
-                              }`}
-                            >
-                              {j + 1}
-                            </div>
-                          ))}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newSource}
+                  onChange={(e) => setNewSource(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && addSource()}
+                  placeholder="e.g., Textbook Ch. 5, Lecture Notes Week 3..."
+                  className="flex-1 text-sm border border-border rounded-lg px-3 py-2 outline-none focus:border-primary/40"
+                />
+                <button
+                  onClick={addSource}
+                  disabled={!newSource.trim()}
+                  className="px-3 py-2 bg-primary text-white rounded-lg text-sm disabled:opacity-50"
+                >
+                  Add
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -503,71 +397,25 @@ export default function UnitDetailClient() {
         {tab === "preview" && (
           <div className="bg-white rounded-xl border border-border overflow-hidden">
             <div className="p-5 border-b border-border bg-gradient-to-r from-indigo-50/50 to-transparent">
-              <h2 className="font-semibold text-lg">
-                Chat Preview — How Students Experience This Unit
-              </h2>
+              <h2 className="font-semibold text-lg">How Students Will Experience This</h2>
               <p className="text-sm text-muted mt-1">
-                Based on your current config: <strong>{config.approach.replace("-", " ")}</strong> method,
-                scaffolding level {config.scaffolding}/5,{" "}
-                {config.boundaries.filter((b) => b.enabled).length} active boundaries.
+                <strong>{config.approach.replace("-", " ")}</strong> method, scaffolding {config.scaffolding}/5, {config.boundaries.filter((b) => b.enabled).length} boundaries active.
               </p>
             </div>
-            <div className="p-6 space-y-4 max-w-3xl mx-auto">
-              <div className="flex gap-3">
-                <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white flex-shrink-0">
-                  <Brain size={16} />
-                </div>
-                <div className="bg-indigo-50 rounded-2xl rounded-tl-sm px-4 py-3 max-w-md">
-                  <p className="text-sm">
-                    Welcome! We&apos;re exploring {config.unitName} today. Let&apos;s
-                    start with a question: What do you think happens to a
-                    cell&apos;s DNA before it divides?
-                  </p>
-                </div>
-              </div>
-              <div className="flex gap-3 justify-end">
-                <div className="bg-gray-100 rounded-2xl rounded-tr-sm px-4 py-3 max-w-md">
-                  <p className="text-sm">
-                    I think the DNA gets copied so each new cell gets a copy?
-                  </p>
-                </div>
-                <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                  AR
-                </div>
-              </div>
-              <div className="flex gap-3">
-                <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white flex-shrink-0">
-                  <Brain size={16} />
-                </div>
-                <div className="bg-indigo-50 rounded-2xl rounded-tl-sm px-4 py-3 max-w-md">
-                  <p className="text-sm">
-                    Great thinking! The DNA does get copied — this is called{" "}
-                    <strong>replication</strong>. Now, <em>why</em> is it
-                    important that the DNA is copied <em>exactly</em>? What might
-                    happen if there were errors?
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-center gap-2 py-4">
-                <div className="h-px flex-1 bg-border" />
-                <span className="text-xs text-muted px-3 flex items-center gap-1.5">
-                  <Shield size={12} className="text-emerald-500" />
-                  {config.approach.replace("-", " ")} method active &bull;{" "}
-                  {config.boundaries.filter((b) => b.enabled).length} guardrails enforced
-                </span>
-                <div className="h-px flex-1 bg-border" />
-              </div>
-
-              <div className="text-center">
-                <Link
-                  href="/student/chat"
-                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary-dark transition-colors"
-                >
-                  <Brain size={16} />
-                  Open Live Student Chat
-                </Link>
-              </div>
+            <div className="p-8 text-center">
+              <Brain size={48} className="text-primary mx-auto mb-4" />
+              <h3 className="font-semibold text-lg mb-2">Ready to Test</h3>
+              <p className="text-muted text-sm mb-6 max-w-md mx-auto">
+                Open the student chat to see how the AI interacts based on your
+                current configuration. Your settings are applied in real-time.
+              </p>
+              <Link
+                href={`/student/chat?unit=${unit.id}`}
+                className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary-dark transition-colors"
+              >
+                <Brain size={16} />
+                Open Student Chat
+              </Link>
             </div>
           </div>
         )}
