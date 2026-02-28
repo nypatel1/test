@@ -1,105 +1,100 @@
 # Riseva — Teacher-Controlled AI Learning System
 
-**Live Demo:** [https://riseva.vercel.app](https://riseva.vercel.app) *(deploy to your own Vercel for full AI functionality)*
+**Live Demo:** [https://test-seven-rouge-40.vercel.app](https://test-seven-rouge-40.vercel.app)
 
-Riseva is a web application that lets teachers configure an AI tutor for their students. Unlike generic AI tools, Riseva keeps the teacher in control: they define what topics to cover, what depth of understanding to target, what teaching approach to use, and what boundaries the AI must follow. Students then interact with a chatbot that teaches through guided questioning — never giving away answers — while analytics flow back to teachers showing misconceptions, mastery levels, and engagement.
+Riseva is a web application that lets teachers configure an AI tutor for their students. Teachers define topics, learning objectives, teaching approach, and safety boundaries. Students then interact with a chatbot that follows the teacher's configuration — teaching through guided questioning, never giving away answers. Analytics flow back to teachers showing what students are asking and how they're engaging.
 
 ## What It Does
 
 ### Teacher Side
-- **Dashboard** — Live overview of student activity, mastery stats, and top misconceptions across all classes
-- **Courses & Units** — Organize curriculum into courses with configurable learning units
-- **Unit Configuration** — Per-unit control over:
-  - Learning objectives (add, remove, set depth: Explain/Analyze/Apply/Synthesize)
+- **Sign up as Teacher** → create an account and access the teacher portal
+- **Create courses** → each gets a unique **class code** (e.g., `AB3X9K`) to share with students
+- **Add units** to courses → each unit has its own AI configuration
+- **Configure the AI per unit:**
+  - Learning objectives (what students should understand)
   - Teaching approach (Socratic, step-by-step, conceptual-first, example-driven)
-  - Scaffolding level (1-5 slider controlling how much support the AI gives)
-  - Safety boundaries (toggles that get injected into the AI's system prompt)
-  - Allowed reference sources
-- **Student Insights** — Interactive analytics dashboard with:
-  - Recharts-powered engagement bar chart (switchable between sessions/minutes/questions)
-  - Mastery + engagement area chart over time
-  - Radar chart comparing class average vs. top quartile per objective
-  - Pie chart showing mastery distribution across students
-  - Color-coded mastery heatmap (students × objectives)
-  - Filterable misconception list with severity and trend indicators
-- **AI Settings** — Global configuration for response length, tone, hint limits, capabilities, and safety guardrails
+  - Scaffolding level (how much support the AI gives)
+  - Response style (length and tone)
+  - Safety boundaries (toggles injected into the AI's system prompt)
+  - Allowed sources
+  - **Upload course materials** (PDF, TXT, or paste text) — the AI uses these as its primary reference
+- **View student insights** — charts showing sessions, messages, time spent, and actual student questions
+- **Dashboard** — overview of all courses, recent sessions, and activity stats
 
 ### Student Side
-- **Learning Home** — Personal progress dashboard with unit mastery rings, topic confidence, streak tracking, and learning tips
-- **AI Chat** — Full tutoring interface that:
-  - Streams responses from OpenAI (or falls back to demo mode without an API key)
-  - Follows the teacher's configured approach, boundaries, and objectives
-  - Supports quick actions: "Explain differently", "Give me a hint", "Practice problem", "Why is this important?"
-  - Persists chat history across sessions via localStorage
-  - Shows learning objectives, session stats, and current AI configuration in a sidebar
+- **Sign up as Student** → enter a teacher's class code to join their course
+- **See enrolled courses and units** → click a unit to start a tutoring session
+- **Chat with the AI tutor** — the AI follows the teacher's configured approach, boundaries, and objectives
+- **Quick actions** — "Explain differently", "Give me a hint", "Practice problem", "Why is this important?"
+- Sessions are tracked and saved to the database
 
 ## Features I'm Most Proud Of
 
-1. **The system prompt builder** (`src/lib/buildSystemPrompt.ts`) — Takes the entire teacher configuration (approach, tone, scaffolding, boundaries, objectives, sources) and constructs a detailed system prompt that controls AI behavior. This is the core innovation: the teacher's intent becomes the AI's instructions.
+1. **The system prompt builder** (`src/lib/buildSystemPrompt.ts`) — Takes the teacher's entire configuration and constructs a detailed system prompt. This is the core innovation: the teacher's intent becomes the AI's instructions. When a teacher uploads materials, they're injected as the AI's primary reference.
 
-2. **Streaming chat with graceful fallback** — The chat interface streams tokens from OpenAI in real-time via Server-Sent Events. If no API key is configured, it automatically falls back to realistic mock responses so the full UX is still demonstrable.
+2. **Streaming chat with graceful fallback** — Real-time token-by-token streaming from OpenAI via SSE. If no API key is configured, falls back to mock responses per-request so the UX is still functional.
 
-3. **The interactive Recharts analytics** — Four distinct chart types (bar, area, radar, pie) with tooltips, legends, and a metric switcher, giving teachers real insight into student understanding.
+3. **Class code enrollment system** — Teachers get a 6-character code per course. Students enter it to join. This required a `security definer` PostgreSQL function to bypass RLS (students can't read courses before enrolling — a chicken-and-egg problem I solved with an RPC call).
 
-4. **Full configuration persistence** — All teacher settings save to localStorage and flow through to the student chat. Change the teaching approach in settings → the AI's behavior changes in the next student session.
+4. **Row Level Security** — Every database query is scoped to the authenticated user. Teachers only see their own courses and their students' data. Students only see courses they're enrolled in. This required solving circular RLS policy dependencies with `security definer` helper functions.
 
 ## How to Use
 
-1. Start at the **landing page** to understand the system
-2. Click **"Explore Teacher Dashboard"** to see the teacher experience
-3. Go to **AI Settings** to configure how the AI teaches (try changing the approach or toggling boundaries)
-4. Click **Save Settings**
-5. Navigate to **Student View** (link in the sidebar) → **Continue Learning** or any unit
-6. Chat with the AI tutor — notice how it follows the teacher's configured approach
-7. Go back to **Student Insights** to see the analytics dashboard
-8. Try the quick action buttons in the chat: "Give me a hint", "Practice problem", etc.
+1. Go to the site and **Sign Up** as a Teacher
+2. **Create a course** (e.g., "AP Biology") → note the class code
+3. **Add a unit** (e.g., "Cell Division") → click Configure
+4. **Set up the AI**: add objectives, choose teaching approach, set boundaries, optionally upload materials
+5. **Click Save**
+6. Share the class code with a student
+7. Student signs up, enters the code → sees the course → clicks a unit → starts chatting
+8. Teacher checks **Student Insights** to see what students are asking
 
 ## How to Run Locally
 
 ```bash
 git clone https://github.com/nypatel1/test.git
 cd test
-git checkout cursor/riseva-system-prototype-edd3
 npm install
+```
+
+Create `.env.local`:
+```
+NEXT_PUBLIC_SUPABASE_URL=your-supabase-url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
+OPENAI_API_KEY=sk-your-openai-key  # optional, works in demo mode without it
+```
+
+Set up the database:
+1. Create a Supabase project at [supabase.com](https://supabase.com)
+2. Run `supabase-schema.sql` in the SQL Editor
+3. Run `supabase-fix.sql` to set up RLS policies
+4. Run `supabase-join-fix.sql` to enable the class code join function
+5. Disable email confirmation in Authentication → Settings (for local dev)
+
+Then:
+```bash
 npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
 
-### With Real AI (Optional)
-
-Create a `.env.local` file in the project root:
-
-```
-OPENAI_API_KEY=sk-your-key-here
-```
-
-Restart the dev server. The student chat will now use OpenAI GPT-4o-mini with streaming responses. Without this key, the chat works in demo mode with pre-written responses.
-
 ## How Secrets Are Handled
 
-- The OpenAI API key is **never committed to the repository** or exposed to the client
-- It's stored as an environment variable (`OPENAI_API_KEY`) in `.env.local` locally or in Vercel's environment variable settings for production
-- `.env*` is in `.gitignore`
-- The API key is only used server-side in the Next.js API route (`/api/chat`)
-- If the key is missing, the app gracefully falls back to demo mode — no errors, no broken UI
-
-## Deploying to Vercel
-
-1. Push to GitHub
-2. Go to [vercel.com](https://vercel.com), import the repository
-3. Add the environment variable `OPENAI_API_KEY` in Vercel's project settings
-4. Deploy — Vercel handles everything automatically for Next.js
+- **OpenAI API key**: Server-side only, stored as `OPENAI_API_KEY` env var. Never sent to the client. If missing, chat runs in demo mode.
+- **Supabase keys**: `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` are public (anon key is designed to be public). All data access is controlled by Row Level Security policies in PostgreSQL.
+- **User passwords**: Handled entirely by Supabase Auth. Never stored or visible to the application.
+- **`.env*` is in `.gitignore`** — no secrets are committed.
 
 ## Tech Stack
 
 - **Next.js 16** (App Router) — React framework with API routes
 - **TypeScript** — Type safety throughout
 - **Tailwind CSS 4** — Utility-first styling
+- **Supabase** — PostgreSQL database + authentication + Row Level Security
 - **OpenAI API** (GPT-4o-mini) — AI chat responses via streaming SSE
-- **Recharts** — Interactive data visualization (bar, area, radar, pie charts)
-- **Lucide React** — Icon library
-- **localStorage** — Client-side persistence for settings and chat history
+- **Recharts** — Interactive data visualization
+- **pdfjs-dist** — Client-side PDF text extraction for material uploads
+- **Lucide React** — Icons
 
 ## Project Structure
 
@@ -107,25 +102,26 @@ Restart the dev server. The student chat will now use OpenAI GPT-4o-mini with st
 src/
 ├── app/
 │   ├── api/chat/route.ts          # OpenAI streaming API endpoint
-│   ├── components/                 # Shared UI components (Logo, Sidebar, Layout)
+│   ├── auth/page.tsx              # Login/signup with role selection
+│   ├── components/                # Logo, Sidebar, Layout, MaterialUpload
 │   ├── student/
 │   │   ├── chat/page.tsx          # AI tutoring chat interface
-│   │   └── learn/page.tsx         # Student learning home
+│   │   └── learn/page.tsx         # Student home (join classes, see units)
 │   ├── teacher/
 │   │   ├── courses/               # Course & unit management
-│   │   │   ├── [id]/             # Unit detail with AI configuration
+│   │   │   ├── [id]/             # Unit config (objectives, approach, materials)
 │   │   │   └── page.tsx
 │   │   ├── dashboard/page.tsx     # Teacher dashboard
 │   │   ├── insights/              # Analytics with Recharts
-│   │   │   ├── page.tsx
-│   │   │   └── ChartsSection.tsx
-│   │   └── settings/page.tsx      # Global AI configuration
+│   │   └── settings/page.tsx      # Links to per-unit AI config
 │   ├── globals.css
-│   ├── layout.tsx
+│   ├── layout.tsx                 # Root layout with AuthProvider
 │   └── page.tsx                   # Landing page
 └── lib/
-    ├── buildSystemPrompt.ts       # Converts teacher config → AI system prompt
-    ├── storage.ts                 # localStorage read/write utilities
-    ├── types.ts                   # Shared TypeScript types & defaults
+    ├── AuthContext.tsx             # Auth provider with role-based routing
+    ├── buildSystemPrompt.ts       # Teacher config → AI system prompt
+    ├── db.ts                      # All Supabase database operations
+    ├── supabase.ts                # Supabase client
+    ├── types.ts                   # TypeScript types
     └── useIsMounted.ts            # SSR-safe mounting hook
 ```
