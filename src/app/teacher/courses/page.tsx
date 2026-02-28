@@ -42,13 +42,20 @@ export default function CoursesPage() {
     })();
   }, [profile]);
 
+  const [error, setError] = useState("");
+
   const handleAddCourse = async () => {
     if (!newCourseName.trim() || !profile) return;
-    const course = await db.createCourse(profile.id, newCourseName.trim());
-    setCourses((prev) => [course, ...prev]);
-    setUnitMap((prev) => ({ ...prev, [course.id]: [] }));
-    setNewCourseName("");
-    setShowNewCourse(false);
+    setError("");
+    try {
+      const course = await db.createCourse(profile.id, newCourseName.trim());
+      setCourses((prev) => [course, ...prev]);
+      setUnitMap((prev) => ({ ...prev, [course.id]: [] }));
+      setNewCourseName("");
+      setShowNewCourse(false);
+    } catch (err: any) {
+      setError(err.message || "Failed to create course");
+    }
   };
 
   const handleDeleteCourse = async (id: string) => {
@@ -129,6 +136,7 @@ export default function CoursesPage() {
                 <X size={16} />
               </button>
             </div>
+            {error && <p className="mt-2 text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
           </div>
         )}
 
