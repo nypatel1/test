@@ -1,17 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import { buildSystemPrompt } from "@/lib/buildSystemPrompt";
-import { TeacherConfig, DEFAULT_TEACHER_CONFIG } from "@/lib/types";
+import { UnitConfig, DEFAULT_UNIT_CONFIG } from "@/lib/types";
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const {
       messages,
-      teacherConfig,
+      unitConfig,
+      unitName,
+      courseName,
     }: {
       messages: { role: "user" | "assistant"; content: string }[];
-      teacherConfig?: TeacherConfig;
+      unitConfig?: UnitConfig;
+      unitName?: string;
+      courseName?: string;
     } = body;
 
     if (!messages || !Array.isArray(messages)) {
@@ -30,8 +34,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const config = teacherConfig || DEFAULT_TEACHER_CONFIG;
-    const systemPrompt = buildSystemPrompt(config);
+    const config = unitConfig || DEFAULT_UNIT_CONFIG;
+    const systemPrompt = buildSystemPrompt(
+      config,
+      unitName || "General",
+      courseName || "General"
+    );
 
     const openai = new OpenAI({ apiKey });
 

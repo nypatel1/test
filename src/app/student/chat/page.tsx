@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   Brain,
@@ -8,8 +9,6 @@ import {
   Target,
   Lightbulb,
   ArrowLeft,
-  CheckCircle2,
-  Circle,
   Sparkles,
   Shield,
   RotateCcw,
@@ -18,37 +17,30 @@ import {
   Trash2,
   WifiOff,
 } from "lucide-react";
-import { ChatMessage, TeacherConfig, DEFAULT_TEACHER_CONFIG } from "@/lib/types";
+import { ChatMessage, Unit } from "@/lib/types";
 import {
-  getTeacherConfig,
-  getChatHistory,
-  saveChatHistory,
-  clearChatHistory,
-  getStudentProgress,
-  saveStudentProgress,
+  getUnit,
+  getUnits,
+  getCourses,
+  getActiveSession,
+  startSession,
+  updateActiveSession,
+  endSession,
+  logAnalytics,
 } from "@/lib/storage";
 
 const MOCK_RESPONSES: Record<string, string> = {
   default:
-    "That's a great question! Let me help you think through this. **Cell division** is fundamental to life — every organism depends on it for growth, repair, and reproduction.\n\nLet's start here: *Why* do you think cells need to divide in the first place? What would happen if they just kept growing larger instead?",
+    "That's a great question! Let me help you think through this.\n\nWhat do you already know about this topic? Let's build from there.",
   "Explain differently":
-    "Let me try a different angle! 🔄\n\nThink of **mitosis** like a photocopy machine — you put in one page and get an exact copy. Both copies are identical, with the same 46 chromosomes.\n\n**Meiosis** is like shuffling a deck of cards and dealing 4 hands — each hand is unique and has only half the cards (23 chromosomes).\n\nDoes that analogy help? What part would you like to explore more?",
+    "Let me try a different angle! 🔄\n\nThink of it this way — can you relate it to something you've seen in everyday life? Sometimes analogies make complex ideas click.\n\nWhat part is most confusing to you?",
   "Give me a hint":
-    "💡 Here's a hint: Think about what happens at **fertilization**. If a sperm (from meiosis) meets an egg (from meiosis), and each has 23 chromosomes... what happens to the chromosome count in the resulting embryo?\n\nThis might help you understand *why* meiosis needs to halve the number!",
+    "💡 Here's a hint: Focus on the *relationship* between the key concepts. How do they connect to each other?\n\nTry working through it step by step and tell me where you get stuck.",
   "Practice problem":
-    "📝 Let's practice!\n\n**A plant cell has 24 chromosomes. A student claims that after meiosis, each resulting cell would have 12 chromosomes, and after mitosis, they'd each have 24.**\n\nIs the student correct about both claims? Walk me through your reasoning for each one.",
+    "📝 Let's practice!\n\nBased on what we've been discussing, here's a scenario: Can you apply the concept we just covered to explain what would happen in a different situation?\n\nWalk me through your reasoning.",
   "Why is this important?":
-    "Great question! 🌍 Understanding cell division is fundamental because:\n\n1. **Mitosis** is how your body **grows and repairs** — every time you heal a cut, mitosis is at work\n2. **Meiosis** creates **genetic diversity** — it's why siblings aren't identical\n3. **Errors** in cell division can lead to conditions like **Down syndrome** (extra chromosome) or **cancer** (uncontrolled mitosis)\n\nThis connects directly to our learning objective about predicting outcomes of division errors. Want to explore that?",
+    "Great question! 🌍 Understanding this concept is important because it connects to many real-world applications.\n\nIt builds the foundation for more advanced topics you'll encounter later. Want to explore how it applies in practice?",
 };
-
-const objectives = [
-  { text: "Describe stages of mitosis", completed: true },
-  { text: "Compare mitosis and meiosis", completed: false },
-  { text: "Cell cycle checkpoints", completed: true },
-  { text: "Division errors", completed: false },
-  { text: "Growth & repair connection", completed: true },
-  { text: "Interpret microscope images", completed: false },
-];
 
 const quickActions = [
   { label: "Explain differently", icon: RotateCcw },
@@ -62,38 +54,48 @@ function generateId() {
 }
 
 function getTimestamp() {
-  return new Date().toLocaleTimeString([], {
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  return new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
-export default function StudentChatPage() {
-  const [config] = useState<TeacherConfig>(() => {
-    if (typeof window !== "undefined") return getTeacherConfig();
-    return DEFAULT_TEACHER_CONFIG;
+function ChatInner() {
+  const searchParams = useSearchParams();
+  const unitId = searchParams.get("unit");
+
+  const [unit] = useState<Unit | null>(() => {
+    if (typeof window === "undefined") return null;
+    if (unitId) return getUnit(unitId) || null;
+    const allUnits = getUnits();
+    return allUnits.length > 0 ? allUnits[0] : null;
   });
+  const [courseName] = useState<string>(() => {
+    if (typeof window === "undefined" || !unit) return "";
+    return getCourses().find((c) => c.id === unit.courseId)?.name || "";
+  });
+
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     if (typeof window === "undefined") return [];
-    const saved = getChatHistory();
-    if (saved.length > 0) return saved;
-    const cfg = getTeacherConfig();
+    const active = getActiveSession();
+    if (active && unit && active.unitId === unit.id && active.messages.length > 0) {
+      return active.messages;
+    }
+    if (!unit) return [];
+    const session = startSession(unit.id);
     const welcome: ChatMessage = {
       id: generateId(),
       role: "assistant",
-      content: `Hi there! I'm your AI tutor for **${cfg.unitName}** in ${cfg.courseName}. I'm here to help you learn — not to give you answers, but to guide you toward real understanding.\n\nLet's get started! What topic within ${cfg.unitName} would you like to explore, or should I pick a concept to work through together?`,
+      content: `Hi! I'm your AI tutor for **${unit.name}**${courseName ? ` in ${courseName}` : ""}. I'm here to help you learn through guided questions — not to give you answers directly.\n\nWhat would you like to explore, or should I start with a concept?`,
       timestamp: getTimestamp(),
       type: "normal",
     };
-    saveChatHistory([welcome]);
+    session.messages = [welcome];
+    updateActiveSession(session);
     return [welcome];
   });
+
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [usingMock, setUsingMock] = useState(false);
-  const [sessionQuestions, setSessionQuestions] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -107,63 +109,37 @@ export default function StudentChatPage() {
       onError: () => void
     ) => {
       try {
-        const apiMessages = allMessages.map((m) => ({
-          role: m.role,
-          content: m.content,
-        }));
-
+        const apiMessages = allMessages.map((m) => ({ role: m.role, content: m.content }));
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             messages: apiMessages,
-            teacherConfig: config,
+            unitConfig: unit?.config,
+            unitName: unit?.name || "General",
+            courseName: courseName || "General",
           }),
         });
 
-        if (res.status === 503) {
-          onError();
-          return;
-        }
-
-        if (!res.ok) {
-          onError();
-          return;
-        }
+        if (!res.ok) { onError(); return; }
 
         const reader = res.body?.getReader();
         const decoder = new TextDecoder();
-
-        if (!reader) {
-          onError();
-          return;
-        }
+        if (!reader) { onError(); return; }
 
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-
           const text = decoder.decode(value);
           const lines = text.split("\n").filter((l) => l.startsWith("data: "));
-
           for (const line of lines) {
             const data = line.slice(6);
-            if (data === "[DONE]") {
-              onDone();
-              return;
-            }
+            if (data === "[DONE]") { onDone(); return; }
             try {
               const parsed = JSON.parse(data);
-              if (parsed.content) {
-                onChunk(parsed.content);
-              }
-              if (parsed.error) {
-                onError();
-                return;
-              }
-            } catch {
-              // skip malformed chunks
-            }
+              if (parsed.content) onChunk(parsed.content);
+              if (parsed.error) { onError(); return; }
+            } catch { /* skip */ }
           }
         }
         onDone();
@@ -171,7 +147,7 @@ export default function StudentChatPage() {
         onError();
       }
     },
-    [config]
+    [unit, courseName]
   );
 
   const sendMessage = async (content: string) => {
@@ -184,49 +160,50 @@ export default function StudentChatPage() {
       timestamp: getTimestamp(),
     };
 
-    const updatedMessages = [...messages, userMsg];
-    setMessages(updatedMessages);
+    const updated = [...messages, userMsg];
+    setMessages(updated);
     setInput("");
-    setSessionQuestions((q) => q + 1);
     setIsStreaming(true);
 
-    const progress = getStudentProgress();
-    progress.questionsAsked += 1;
-    progress.lastSession = new Date().toISOString();
-    saveStudentProgress(progress);
+    if (unit) {
+      logAnalytics({ unitId: unit.id, timestamp: new Date().toISOString(), type: "message_sent", messageContent: content.trim() });
+    }
 
-    const placeholderMsg: ChatMessage = {
+    const placeholder: ChatMessage = {
       id: generateId(),
       role: "assistant",
       content: "",
       timestamp: getTimestamp(),
       type: content === "Give me a hint" ? "hint" : content === "Practice problem" ? "practice" : "normal",
     };
-
-    const withPlaceholder = [...updatedMessages, placeholderMsg];
+    const withPlaceholder = [...updated, placeholder];
     setMessages(withPlaceholder);
 
     let accumulated = "";
 
     await sendToAPI(
-      updatedMessages,
+      updated,
       (chunk) => {
         accumulated += chunk;
         setMessages((prev) => {
-          const updated = [...prev];
-          const last = updated[updated.length - 1];
-          if (last.id === placeholderMsg.id) {
-            updated[updated.length - 1] = { ...last, content: accumulated };
+          const msgs = [...prev];
+          const last = msgs[msgs.length - 1];
+          if (last.id === placeholder.id) {
+            msgs[msgs.length - 1] = { ...last, content: accumulated };
           }
-          return updated;
+          return msgs;
         });
       },
       () => {
         setUsingMock(false);
         setMessages((prev) => {
-          const final = [...prev];
-          saveChatHistory(final);
-          return final;
+          const session = getActiveSession();
+          if (session) {
+            session.messages = prev;
+            session.questionsAsked += 1;
+            updateActiveSession(session);
+          }
+          return prev;
         });
         setIsStreaming(false);
       },
@@ -234,45 +211,73 @@ export default function StudentChatPage() {
         setUsingMock(true);
         const mockKey = content in MOCK_RESPONSES ? content : "default";
         const aiMsg: ChatMessage = {
-          id: placeholderMsg.id,
+          id: placeholder.id,
           role: "assistant",
           content: MOCK_RESPONSES[mockKey],
           timestamp: getTimestamp(),
-          type: placeholderMsg.type,
+          type: placeholder.type,
         };
-        const final = [...updatedMessages, aiMsg];
+        const final = [...updated, aiMsg];
         setMessages(final);
-        saveChatHistory(final);
+        const session = getActiveSession();
+        if (session) {
+          session.messages = final;
+          session.questionsAsked += 1;
+          updateActiveSession(session);
+        }
         setIsStreaming(false);
       }
     );
   };
 
   const handleClear = () => {
-    clearChatHistory();
-    setSessionQuestions(0);
-    const welcomeMsg: ChatMessage = {
-      id: generateId(),
-      role: "assistant",
-      content: `Session cleared! Let's start fresh with **${config.unitName}**.\n\nWhat would you like to work on?`,
-      timestamp: getTimestamp(),
-      type: "normal",
-    };
-    setMessages([welcomeMsg]);
-    saveChatHistory([welcomeMsg]);
+    endSession();
+    if (unit) {
+      const session = startSession(unit.id);
+      const welcome: ChatMessage = {
+        id: generateId(),
+        role: "assistant",
+        content: `Session cleared! Let's start fresh with **${unit.name}**.\n\nWhat would you like to work on?`,
+        timestamp: getTimestamp(),
+        type: "normal",
+      };
+      session.messages = [welcome];
+      updateActiveSession(session);
+      setMessages([welcome]);
+    } else {
+      setMessages([]);
+    }
   };
+
+  if (!unit) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-background">
+        <div className="text-center">
+          <Brain size={48} className="text-gray-200 mx-auto mb-4" />
+          <h2 className="text-xl font-semibold mb-2">No unit selected</h2>
+          <p className="text-muted text-sm mb-4">
+            Ask your teacher to set up a course and unit, or go to the teacher portal to create one.
+          </p>
+          <div className="flex gap-3 justify-center">
+            <Link href="/student/learn" className="px-4 py-2 border border-border rounded-lg text-sm hover:bg-surface-hover">
+              Student Home
+            </Link>
+            <Link href="/teacher/courses" className="px-4 py-2 bg-primary text-white rounded-lg text-sm">
+              Teacher Portal
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-screen flex bg-background">
-      {/* Chat Area */}
       <div className="flex-1 flex flex-col">
-        {/* Chat Header */}
+        {/* Header */}
         <header className="bg-white border-b border-border px-6 py-3 flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-4">
-            <Link
-              href="/student/learn"
-              className="text-muted hover:text-foreground transition-colors"
-            >
+            <Link href="/student/learn" className="text-muted hover:text-foreground transition-colors">
               <ArrowLeft size={18} />
             </Link>
             <div className="flex items-center gap-3">
@@ -280,10 +285,9 @@ export default function StudentChatPage() {
                 <Brain size={18} className="text-white" />
               </div>
               <div>
-                <h1 className="font-semibold text-sm">{config.unitName}</h1>
+                <h1 className="font-semibold text-sm">{unit.name}</h1>
                 <p className="text-xs text-muted">
-                  {config.courseName} &middot;{" "}
-                  {config.approach.replace("-", " ")} method
+                  {courseName} &middot; {unit.config.approach.replace("-", " ")}
                 </p>
               </div>
             </div>
@@ -291,20 +295,17 @@ export default function StudentChatPage() {
           <div className="flex items-center gap-3">
             {usingMock && (
               <span className="flex items-center gap-1.5 text-xs text-amber-600 bg-amber-50 px-2.5 py-1 rounded-full">
-                <WifiOff size={12} />
-                Demo mode
+                <WifiOff size={12} /> Demo mode
               </span>
             )}
             <button
               onClick={handleClear}
               className="text-xs text-muted hover:text-red-500 transition-colors flex items-center gap-1"
             >
-              <Trash2 size={12} />
-              Clear
+              <Trash2 size={12} /> Clear
             </button>
             <div className="flex items-center gap-1.5 text-xs text-muted">
-              <Shield size={12} className="text-emerald-500" />
-              Teacher-configured
+              <Shield size={12} className="text-emerald-500" /> Teacher-configured
             </div>
           </div>
         </header>
@@ -314,8 +315,7 @@ export default function StudentChatPage() {
           <div className="flex items-center justify-center gap-3 py-2">
             <div className="h-px flex-1 bg-border" />
             <span className="text-xs text-muted px-3 py-1 rounded-full bg-gray-100 flex items-center gap-1.5">
-              <Sparkles size={10} />
-              Learning session &middot; {config.unitName}
+              <Sparkles size={10} /> {unit.name}
             </span>
             <div className="h-px flex-1 bg-border" />
           </div>
@@ -323,9 +323,7 @@ export default function StudentChatPage() {
           {messages.map((msg) => (
             <div
               key={msg.id}
-              className={`flex gap-3 animate-fade-in ${
-                msg.role === "user" ? "justify-end" : ""
-              }`}
+              className={`flex gap-3 animate-fade-in ${msg.role === "user" ? "justify-end" : ""}`}
             >
               {msg.role === "assistant" && (
                 <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white flex-shrink-0 mt-1">
@@ -333,7 +331,7 @@ export default function StudentChatPage() {
                 </div>
               )}
               <div
-                className={`max-w-lg ${
+                className={`max-w-lg px-4 py-3 shadow-sm ${
                   msg.role === "user"
                     ? "bg-primary text-white rounded-2xl rounded-tr-sm"
                     : msg.type === "hint"
@@ -341,58 +339,48 @@ export default function StudentChatPage() {
                     : msg.type === "practice"
                     ? "bg-cyan-50 border border-cyan-200 rounded-2xl rounded-tl-sm"
                     : "bg-white border border-border rounded-2xl rounded-tl-sm"
-                } px-4 py-3 shadow-sm`}
+                }`}
               >
                 {msg.type === "hint" && (
                   <div className="flex items-center gap-1.5 mb-1.5">
                     <Lightbulb size={12} className="text-amber-500" />
-                    <span className="text-[10px] font-medium text-amber-600 uppercase tracking-wider">
-                      Hint
-                    </span>
+                    <span className="text-[10px] font-medium text-amber-600 uppercase tracking-wider">Hint</span>
                   </div>
                 )}
                 {msg.type === "practice" && (
                   <div className="flex items-center gap-1.5 mb-1.5">
                     <FlaskConical size={12} className="text-cyan-500" />
-                    <span className="text-[10px] font-medium text-cyan-600 uppercase tracking-wider">
-                      Practice
-                    </span>
+                    <span className="text-[10px] font-medium text-cyan-600 uppercase tracking-wider">Practice</span>
                   </div>
                 )}
-                <div
-                  className={`text-sm leading-relaxed whitespace-pre-wrap ${
-                    msg.role === "user" ? "text-white" : ""
-                  }`}
-                  dangerouslySetInnerHTML={{
-                    __html: msg.content
-                      .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
-                      .replace(/\*(.*?)\*/g, "<em>$1</em>")
-                      .replace(/\n/g, "<br/>"),
-                  }}
-                />
-                {msg.content === "" && isStreaming && (
+                {msg.content === "" && isStreaming ? (
                   <div className="flex gap-1.5">
                     <div className="w-2 h-2 bg-gray-300 rounded-full typing-dot" />
                     <div className="w-2 h-2 bg-gray-300 rounded-full typing-dot" />
                     <div className="w-2 h-2 bg-gray-300 rounded-full typing-dot" />
                   </div>
+                ) : (
+                  <div
+                    className={`text-sm leading-relaxed whitespace-pre-wrap ${msg.role === "user" ? "text-white" : ""}`}
+                    dangerouslySetInnerHTML={{
+                      __html: msg.content
+                        .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
+                        .replace(/\*(.*?)\*/g, "<em>$1</em>")
+                        .replace(/\n/g, "<br/>"),
+                    }}
+                  />
                 )}
-                <p
-                  className={`text-[10px] mt-1.5 ${
-                    msg.role === "user" ? "text-white/60" : "text-muted"
-                  }`}
-                >
+                <p className={`text-[10px] mt-1.5 ${msg.role === "user" ? "text-white/60" : "text-muted"}`}>
                   {msg.timestamp}
                 </p>
               </div>
               {msg.role === "user" && (
                 <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0 mt-1">
-                  AR
+                  S
                 </div>
               )}
             </div>
           ))}
-
           <div ref={messagesEndRef} />
         </div>
 
@@ -405,8 +393,7 @@ export default function StudentChatPage() {
               disabled={isStreaming}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-border bg-white text-xs font-medium text-muted hover:text-primary hover:border-primary/30 transition-all disabled:opacity-50"
             >
-              <a.icon size={12} />
-              {a.label}
+              <a.icon size={12} /> {a.label}
             </button>
           ))}
         </div>
@@ -415,7 +402,6 @@ export default function StudentChatPage() {
         <div className="px-6 pb-6 pt-2">
           <div className="flex items-center gap-3 bg-white border border-border rounded-xl px-4 py-3 shadow-sm focus-within:border-primary/40 focus-within:shadow-md transition-all">
             <input
-              ref={inputRef}
               type="text"
               placeholder="Type your answer or ask a question..."
               value={input}
@@ -437,78 +423,31 @@ export default function StudentChatPage() {
             </button>
           </div>
           <p className="text-center text-[10px] text-muted mt-2">
-            {usingMock
-              ? "Running in demo mode — connect an OpenAI API key for live AI responses"
-              : "AI tutor powered by OpenAI"}{" "}
-            &middot; Configured by teacher &middot; Focused on mastery
+            {usingMock ? "Demo mode — add OpenAI key for live AI" : "Powered by OpenAI"} &middot; Teacher-configured
           </p>
         </div>
       </div>
 
-      {/* Right Sidebar */}
+      {/* Sidebar */}
       <aside className="w-72 bg-white border-l border-border p-5 flex-shrink-0 overflow-y-auto hidden lg:block">
         <h3 className="font-semibold text-sm flex items-center gap-2 mb-4">
           <Target size={15} className="text-primary" />
           Learning Objectives
         </h3>
-        <div className="space-y-2 mb-6">
-          {objectives.map((obj, i) => (
-            <div
-              key={i}
-              className={`flex items-start gap-2.5 p-2.5 rounded-lg text-sm ${
-                obj.completed ? "bg-emerald-50" : "bg-gray-50"
-              }`}
-            >
-              {obj.completed ? (
-                <CheckCircle2
-                  size={15}
-                  className="text-emerald-500 mt-0.5 flex-shrink-0"
-                />
-              ) : (
-                <Circle
-                  size={15}
-                  className="text-gray-300 mt-0.5 flex-shrink-0"
-                />
-              )}
-              <span
-                className={obj.completed ? "text-emerald-700" : "text-muted"}
-              >
-                {obj.text}
-              </span>
-            </div>
-          ))}
-        </div>
+        {unit.config.objectives.length === 0 ? (
+          <p className="text-xs text-muted italic">No objectives set for this unit yet.</p>
+        ) : (
+          <div className="space-y-2 mb-6">
+            {unit.config.objectives.map((obj, i) => (
+              <div key={i} className="flex items-start gap-2.5 p-2.5 rounded-lg text-sm bg-gray-50">
+                <Target size={13} className="text-primary mt-0.5 flex-shrink-0" />
+                <span className="text-muted text-xs">{obj.text}</span>
+              </div>
+            ))}
+          </div>
+        )}
 
         <div className="border-t border-border pt-5">
-          <h3 className="font-semibold text-sm flex items-center gap-2 mb-3">
-            <TrendingUpIcon />
-            Session Stats
-          </h3>
-          <div className="space-y-3">
-            <div>
-              <div className="flex justify-between text-xs mb-1">
-                <span className="text-muted">Questions This Session</span>
-                <span className="font-semibold">{sessionQuestions}</span>
-              </div>
-            </div>
-            <div>
-              <div className="flex justify-between text-xs mb-1">
-                <span className="text-muted">Messages</span>
-                <span className="font-semibold">{messages.length}</span>
-              </div>
-            </div>
-            <div>
-              <div className="flex justify-between text-xs mb-1">
-                <span className="text-muted">Mode</span>
-                <span className="font-semibold text-xs">
-                  {usingMock ? "Demo" : "Live AI"}
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="border-t border-border pt-5 mt-5">
           <h3 className="font-semibold text-sm flex items-center gap-2 mb-3">
             <Sparkles size={15} className="text-amber-500" />
             AI Configuration
@@ -516,27 +455,19 @@ export default function StudentChatPage() {
           <div className="space-y-2 text-xs text-muted">
             <div className="flex items-center justify-between p-2 bg-indigo-50 rounded-lg">
               <span>Approach</span>
-              <span className="font-medium text-indigo-700 capitalize">
-                {config.approach.replace("-", " ")}
-              </span>
+              <span className="font-medium text-indigo-700 capitalize">{unit.config.approach.replace("-", " ")}</span>
             </div>
             <div className="flex items-center justify-between p-2 bg-indigo-50 rounded-lg">
               <span>Tone</span>
-              <span className="font-medium text-indigo-700 capitalize">
-                {config.tone}
-              </span>
+              <span className="font-medium text-indigo-700 capitalize">{unit.config.tone}</span>
             </div>
             <div className="flex items-center justify-between p-2 bg-indigo-50 rounded-lg">
               <span>Scaffolding</span>
-              <span className="font-medium text-indigo-700">
-                Level {config.scaffolding}/5
-              </span>
+              <span className="font-medium text-indigo-700">Level {unit.config.scaffolding}/5</span>
             </div>
             <div className="flex items-center justify-between p-2 bg-indigo-50 rounded-lg">
               <span>Boundaries</span>
-              <span className="font-medium text-indigo-700">
-                {config.boundaries.filter((b) => b.enabled).length} active
-              </span>
+              <span className="font-medium text-indigo-700">{unit.config.boundaries.filter((b) => b.enabled).length} active</span>
             </div>
           </div>
         </div>
@@ -545,21 +476,10 @@ export default function StudentChatPage() {
   );
 }
 
-function TrendingUpIcon() {
+export default function StudentChatPage() {
   return (
-    <svg
-      width="15"
-      height="15"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="text-emerald-500"
-    >
-      <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
-      <polyline points="16 7 22 7 22 13" />
-    </svg>
+    <Suspense fallback={<div className="h-screen flex items-center justify-center">Loading...</div>}>
+      <ChatInner />
+    </Suspense>
   );
 }
