@@ -51,6 +51,16 @@ export function buildSystemPrompt(
       ? config.allowedSources.map((s) => `- ${s}`).join("\n")
       : "- No specific sources restricted. Use general knowledge appropriate for the topic.";
 
+  const materialsSection =
+    config.materials && config.materials.length > 0
+      ? `\n\n## Uploaded Course Materials\nThe teacher has provided the following reference materials. Use these as your PRIMARY source of truth when answering questions. Quote or reference this content when relevant.\n\n${config.materials
+          .map(
+            (m) =>
+              `### ${m.name}\n${m.content.slice(0, 8000)}${m.content.length > 8000 ? "\n[... content truncated for context length ...]" : ""}`
+          )
+          .join("\n\n")}`
+      : "";
+
   const scaffoldingDesc =
     config.scaffolding <= 2
       ? "Provide minimal scaffolding. Give brief hints and expect the student to work through problems with little guidance."
@@ -94,5 +104,5 @@ ${sourcesList}
 - Keep track of the conversation flow and build on previous exchanges.
 - Use markdown formatting: **bold** for key terms, *italics* for emphasis.
 - If the student asks you to write their homework or give a direct answer to a test question, politely decline and redirect to learning.
-- Stay within the scope of "${unitName}" for "${courseName}".`;
+- Stay within the scope of "${unitName}" for "${courseName}".${materialsSection}`;
 }
