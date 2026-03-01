@@ -51,6 +51,15 @@ function ChatInner() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const sessionStartRef = useRef<number>(0);
 
+  // Refs to always have latest values in cleanup — synced via effects
+  const sessionIdRef = useRef(sessionId);
+  const messagesRef = useRef(messages);
+  const questionsRef = useRef(questionsAsked);
+
+  useEffect(() => { sessionIdRef.current = sessionId; }, [sessionId]);
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
+  useEffect(() => { questionsRef.current = questionsAsked; }, [questionsAsked]);
+
   useEffect(() => {
     if (authLoading) return;
     if (!user) { router.push("/auth"); return; }
@@ -78,18 +87,26 @@ function ChatInner() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Save session on unmount
+  // Save session on unmount or tab close
   useEffect(() => {
-    return () => {
-      if (sessionId && messages.length > 1) {
-        const duration = Math.round((Date.now() - sessionStartRef.current) / 60000);
-        db.updateChatSession(sessionId, {
-          messages, questions_asked: questionsAsked, duration_minutes: duration,
+    const saveSession = () => {
+      const sid = sessionIdRef.current;
+      const msgs = messagesRef.current;
+      const qs = questionsRef.current;
+      if (sid && msgs.length > 1) {
+        const duration = Math.max(1, Math.round((Date.now() - sessionStartRef.current) / 60000));
+        db.updateChatSession(sid, {
+          messages: msgs, questions_asked: qs, duration_minutes: duration,
           ended_at: new Date().toISOString(),
         });
       }
     };
-  }, [sessionId, messages, questionsAsked]);
+    window.addEventListener("beforeunload", saveSession);
+    return () => {
+      window.removeEventListener("beforeunload", saveSession);
+      saveSession();
+    };
+  }, []);
 
   const sendToAPI = useCallback(
     async (allMessages: ChatMessage[], onChunk: (t: string) => void, onDone: () => void, onError: () => void) => {
@@ -143,11 +160,10 @@ function ChatInner() {
       },
       () => {
         setUsingMock(false);
-        // Save progress periodically
-        if (sessionId) {
-          const duration = Math.round((Date.now() - sessionStartRef.current) / 60000);
+        if (sessionIdRef.current) {
+          const duration = Math.max(1, Math.round((Date.now() - sessionStartRef.current) / 60000));
           setMessages((prev) => {
-            db.updateChatSession(sessionId, { messages: prev, questions_asked: questionsAsked + 1, duration_minutes: duration });
+            db.updateChatSession(sessionIdRef.current!, { messages: prev, questions_asked: questionsRef.current + 1, duration_minutes: duration });
             return prev;
           });
         }
@@ -164,7 +180,7 @@ function ChatInner() {
 
   const handleClear = async () => {
     if (sessionId && messages.length > 1) {
-      const duration = Math.round((Date.now() - sessionStartRef.current) / 60000);
+      const duration = Math.max(1, Math.round((Date.now() - sessionStartRef.current) / 60000));
       await db.updateChatSession(sessionId, { messages, questions_asked: questionsAsked, duration_minutes: duration, ended_at: new Date().toISOString() });
     }
     if (unit && user) {
